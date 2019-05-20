@@ -23,6 +23,13 @@ sender is lying about its identity and can be treated as a spammer.
 
 This documentation and the development of whitescan is in progress. 
 
+## how it works, from a users perspective 
+
+whitescan.pl is started every few minutes from crontab (i am using 2 min atm)
+it calls spamdb and reads its output, compares it with the information stored it its 
+sdbm database in /var/db/whitescan and feeds back the white and trapped ip hosts to 
+spamdb. 
+
 ## whitescan.pl --help
 
 ```
