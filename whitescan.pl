@@ -38,7 +38,7 @@ $VERSION='0.9.1';
 $GREYLOG='/var/log/grey.log';
 
 my %opts;
-getopts('hvdntaD:p:T:N:', \%opts);
+getopts('hvdntD:p:T:N:', \%opts);
 
 if ( defined $opts{h} ) { HELP_MESSAGE(); }
 if ( ! defined $opts{p} ) { $opts{p}=30; }
@@ -66,7 +66,6 @@ sub HELP_MESSAGE {
 	print STDERR "     -h this help \n";
 	print STDERR "     --help the very same help \n";
 	print STDERR "     -v be verbose on stderr eg. log what you are doing\n";
-	print STDERR "     -a aggressively blacklist a grey entry that can't resolve\n";
 	print STDERR "     -d dump the database content for debugging \n";
 	print STDERR "     -n create a formatted <nospamd> table from this database \n";
 	print STDERR "     -t create a formatted <spamd> traplist table from this database \n";
@@ -166,12 +165,12 @@ while(<SPAMDB>){
 	print GRL "$grey_key|$value\n";
 
 	if ( test_helo($helo) == 0 ) { 
-		if ( defined $opts{a} ) { push(@trapped_src, $src); }
+		push(@trapped_src, $src);
 		next; 
 	} # for not being a domain
 	if ( compare_helo_addr($helo, $src) == 0 ) { 
 		# domain does not resolve
-		if ( defined $opts{a} ) { push(@trapped_src, $src); }
+		push(@trapped_src, $src);
 		next; 
 	} 
 
@@ -273,7 +272,7 @@ foreach my $helo (@trapped_helos) {
 }
 
 dbg("trapping src");
-my $traptime=$time+(60*60*24*5);
+my $traptime=$time+(60*60*24); # trap for 24 hours
 foreach my $src (@trapped_src) {
 	dbg("spamdb -a -t $addr"); 
 	system("spamdb -a -t $addr");
