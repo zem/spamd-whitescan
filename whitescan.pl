@@ -38,7 +38,7 @@ $VERSION='0.9.1';
 $GREYLOG='/var/log/grey.log';
 
 my %opts;
-getopts('hvdntD:p:T:N:', \%opts);
+getopts('hvdntD:p:T:N:i:e:', \%opts);
 
 if ( defined $opts{h} ) { HELP_MESSAGE(); }
 if ( ! defined $opts{p} ) { $opts{p}=30; }
@@ -73,6 +73,8 @@ sub HELP_MESSAGE {
 	print STDERR "     -D SOME_DB_KEY  deletes a key from the database\n";
 	print STDERR "     -T SOME_HELO  sets a HELO Trap\n";
 	print STDERR "     -N SOME_HELO  sets a HELO as nospam\n";
+	print STDERR "     -e EXPORT_DIR export trapped nospam and resolved data to this directory\n";
+	print STDERR "     -i IMPORT_DIR import trapped nospam and resolved data from this directory\n";
 	exit;
 }
 
