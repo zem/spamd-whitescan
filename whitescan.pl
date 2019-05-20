@@ -17,11 +17,6 @@
 # 
 # do some whitelist scanning using regex sets
 # 
-# TODO: aggressive tarpitting if we discover that a domain does not provide a 
-# reverse lookup
-#
-# TODO: Log GEYLIST Entrys 
-#
 # TODO2: having 2 conf directorys with lists that are read when touched, 
 # containing NOSPAM: and TRAPPED: lists. Those lists can be provided 
 # Externally 
@@ -40,6 +35,8 @@ use POSIX 'strftime';
 
 $VERSION='0.9.1';
 
+$GREYLOG='/var/log/grey.log';
+
 my %opts;
 getopts('hvdntaD:p:T:N:', \%opts);
 
@@ -52,6 +49,9 @@ if ( $opts{p} !~ /^\d+$/ ) {
 
 tie(%db, 'SDBM_File', '/var/db/whitescan', O_RDWR|O_CREAT, 0600)
   or die "Couldn't tie SDBM file '/var/db/whitescan': $!; aborting";
+
+dbg("opening greylog");
+open(GRL, ">> /var/log/grey.log") or die "could not open grey.log";
 
 ######################################################################################
 sub HELP_MESSAGE {
@@ -155,10 +155,15 @@ while(<SPAMDB>){
 	$grey_key="GREY|$src|$helo|$from|$to";
 	$value="$first|$passed|$expire|$block|$pass";
 	if ( defined $db{$grey_key} ) { 
+		if ( $db{$grey_key} ne $value ){
+			$db{$grey_key}=$value;
+			print GRL "$grey_key|$value\n";
+		}
 		#dbg("grey entry already seen", $helo, $src, $from, $to);
 		next; 
 	} # we have already seen and processed this greylist entry
 	$db{$grey_key}=$value;
+	print GRL "$grey_key|$value\n";
 
 	if ( test_helo($helo) == 0 ) { 
 		if ( defined $opts{a} ) { push(@trapped_src, $src); }
@@ -267,6 +272,24 @@ foreach my $helo (@trapped_helos) {
 	}
 }
 
+dbg("trapping src");
+my $traptime=$time+(60*60*24*5);
+foreach my $src (@trapped_src) {
+	dbg("spamdb -a -t $addr"); 
+	system("spamdb -a -t $addr");
+	# trap for 5 days 
+	$db{"UNRESOLVED|$src"}=$traptime;
+}
+dbg("untrapping src to give them a try");
+foreach my $key (grep {/^UNRESOLVED/} keys %db) {
+	if ( $db{$key} < $time ) {
+		my $addr=substr($key,11);
+		dbg("spamdb -d $addr"); 
+		system("spamdb -d $addr"); 
+		delete $db{$key};
+	}
+}
+
 dbg("expire old grey entrys ");
 foreach my $key (grep {/^GREY/} keys %db) {
 	my (
@@ -338,4 +361,5 @@ if ( defined $opts{d} ) {
 } 
 
 untie %db;
+close GRL;
 exit(0);
