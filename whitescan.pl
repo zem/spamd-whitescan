@@ -17,25 +17,37 @@
 # 
 # do some whitelist scanning using regex sets
 # 
+# TODO4: Handle SPF entrys if they exist properly, eg trap/tarpit all ips 
+# pretending to send from a domain that are not listed in spf
+#
+# no SPF==classic handling 
+# ---------------------------
+# HELO|SPF|OK
+#  OK | OK|OK
+#  NO | OK|OK if its also reversing and domain matches
+#  OK | NO|NO definately fraud, sending domain tells us
+#  NO | NO|NO definately tarpit this
+#
 # TODO2: having 2 conf directorys with lists that are read when touched, 
 # containing NOSPAM: and TRAPPED: lists. Those lists can be provided 
 # Externally 
 #
 # TODO3: Export NOSPAMD and TRAPPED lists 
 #
-# TODO4: Handle SPF entrys if they exist properly, eg trap/tarpit all ips 
-# pretending to send from a domain that are not listed in spf
 #
 use Fcntl;   # For O_RDWR, O_CREAT, etc.
 use SDBM_File;
 use Socket;
 use Net::hostent;
 use Getopt::Std;
+use Mail::SPF;
 use POSIX 'strftime';
 
 $VERSION='0.9.1';
 
 $GREYLOG='/var/log/grey.log';
+
+my $spf_server  = Mail::SPF::Server->new();
 
 my %opts;
 getopts('hvdntD:p:T:N:i:e:', \%opts);
@@ -166,15 +178,31 @@ while(<SPAMDB>){
 	$db{$grey_key}=$value;
 	print GRL "$grey_key|$value\n";
 
+
 	if ( test_helo($helo) == 0 ) { 
 		push(@trapped_src, $src);
 		next; 
 	} # for not being a domain
+	my $spf = $spf_server->process(Mail::SPF::Request->new(
+			scope           => 'mfrom',             # or 'helo', 'pra'
+			identity        => substr($from, 1, -1),
+			ip_address      => $src,
+		)
+	);
 	if ( compare_helo_addr($helo, $src) == 0 ) { 
-		# domain does not resolve
-		push(@trapped_src, $src);
-		next; 
+		# domain does not resolve and does not pass spf
+		if ( $spf->code ne 'pass' ) {
+			push(@trapped_src, $src);
+			next; 
+		}
 	} 
+	# check spf cone anyway if its neither none or pass, trap the host
+	if ( $spf->code ne 'none' ) {
+		if ( $spf->code ne 'pass' ) {
+			push(@trapped_src, $src);
+			next; 
+		}
+	}
 
 	# store resolved IP addresses for this greylist helo entry
 	my %iph=ip_hash($db{"RESOLVED|$helo"});
