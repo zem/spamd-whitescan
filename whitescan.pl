@@ -17,7 +17,7 @@
 # 
 # do some whitelist scanning using regex sets
 # 
-# TODO4: Handle SPF entrys if they exist properly, eg trap/tarpit all ips 
+# TOTEST: Handle SPF entrys if they exist properly, eg trap/tarpit all ips 
 # pretending to send from a domain that are not listed in spf
 #
 # no SPF==classic handling 
@@ -34,7 +34,8 @@
 #
 # TODO3: Export NOSPAMD and TRAPPED lists 
 #
-#
+######################################################################################
+# Setup part to make load librarys and initialize vars and parse argv
 use Fcntl;   # For O_RDWR, O_CREAT, etc.
 use SDBM_File;
 use Socket;
@@ -66,6 +67,7 @@ dbg("opening greylog");
 open(GRL, ">> /var/log/grey.log") or die "could not open grey.log";
 
 ######################################################################################
+# The library part, functs to be used in this script
 sub HELP_MESSAGE {
 	print STDERR "whitelist.pl is a whitelist scanner for spamd\n";
 	print STDERR "it can be used to whitelist hardly passing smtp hosts\n";
@@ -142,7 +144,7 @@ sub ip_string {
 }
 
 ################################################################################
-# do less syscalls 
+# Main workflow parsing spamdb output 
 my $time=time;
 my @white_helos=();
 my @trapped_helos=();
@@ -272,6 +274,10 @@ while(<SPAMDB>){
 }
 close SPAMDB;
 
+################################################################################
+# Main workflow part 2 pusching the results of main 1 back to database, stdout 
+# or spamdb  
+#
 # this has to be at the right spot in the code to be effective not in the end 
 # as the rest of the parameter if statements are
 if ( defined $opts{N} ) {
@@ -408,6 +414,8 @@ if ( defined $opts{d} ) {
 	}
 } 
 
+################################################################################
+# close open files before exit 
 untie %db;
 close GRL;
 exit(0);
