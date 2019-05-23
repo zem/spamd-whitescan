@@ -103,14 +103,22 @@ sub test_helo {
 	return 0;
 }
 
-sub compare_helo_addr {
+sub resolve_helo {
 	my $helo=shift;
-	my $addr=shift;
+	my @addrs;
 	
 	my $hent=gethostbyname($helo);
-	if ( ! $hent ) { return 0; }
+	if ( ! $hent ) { return; }
 	my $aref=$hent->addr_list;
-	foreach my $haddr (map { inet_ntoa($_) } @$aref) {
+	@addrs=map { inet_ntoa($_) } @$aref;
+	return @addrs;
+}
+
+sub compare_helo_addr {
+	my $addr=shift;
+	my @lst=@_;
+
+	foreach my $haddr (@lst) {
 		if ( $addr eq $haddr ) { return 1; }
 	}
 	return 0;
@@ -180,33 +188,44 @@ while(<SPAMDB>){
 
 
 	if ( test_helo($helo) == 0 ) { 
+		dbg("helo $helo has no domain in it and is trapped therefore");
 		push(@trapped_src, $src);
 		next; 
 	} # for not being a domain
+	dbg("spf resolving $helo");
+	my @addrs=resove_helo(@helo);
+	dbg("spf lookup from ".substr($from, 1, -1)." for IP $src");
 	my $spf = $spf_server->process(Mail::SPF::Request->new(
 			scope           => 'mfrom',             # or 'helo', 'pra'
 			identity        => substr($from, 1, -1),
 			ip_address      => $src,
 		)
 	);
-	if ( compare_helo_addr($helo, $src) == 0 ) { 
-		# domain does not resolve and does not pass spf
-		if ( $spf->code ne 'pass' ) {
-			push(@trapped_src, $src);
-			next; 
-		}
-	} 
 	# check spf cone anyway if its neither none or pass, trap the host
 	if ( $spf->code ne 'none' ) {
 		if ( $spf->code ne 'pass' ) {
+			dbg("The ip $src is not listed in the spf record of $from");
 			push(@trapped_src, $src);
 			next; 
 		}
 	}
 
+	if ( compare_helo_addr($src, @addrs) == 0 ) { 
+		# domain does not resolve and does not pass spf
+		if ( $spf->code ne 'pass' ) {
+			dbg("spf lookup from ".substr($from, 1, -1));
+			push(@trapped_src, $src);
+			next; 
+		}
+		dbg("The helo $helo is illegal but the spf lookup has passed");
+		dbg("The this is most propably the case for outlook.com");
+		# we will take $src as the ip one by one. 
+		@addrs=($src);
+	} 
+
 	# store resolved IP addresses for this greylist helo entry
 	my %iph=ip_hash($db{"RESOLVED|$helo"});
-	$iph{$src}=1;
+	foreach my $a (@addrs) { $iph{$a}=1; }
 	$db{"RESOLVED|$helo"}=ip_string(%iph);
 	dbg("stored resolved ips", $helo, keys %iph);
 
