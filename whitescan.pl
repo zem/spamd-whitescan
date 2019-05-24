@@ -143,6 +143,28 @@ sub ip_string {
 	return join('|', keys(%iph));
 }
 
+sub export_to_file {
+	my $file=shift;
+	my $exp=shift;
+	open(OUT, "> $file") or die "cant write to $file\n";
+	foreach my $key (sort grep {/^${exp}/} keys %db) {
+		print OUT "$key|$db{$key}\n";
+	}
+	close OUT;
+}
+
+sub import_file {
+	my $file=shift;
+	open(IN, "< $file") or die "cant read from $file\n";
+	while(<IN>) {
+		chomp;
+		my ($T, $P, $F) = split(/\|/);
+		my $key="$T|$P";
+		if ( ! defined $db{$key} ) { $db{$key}=$F; }
+	}
+	close IN;
+}
+
 ################################################################################
 # Main workflow parsing spamdb output 
 my $time=time;
@@ -195,7 +217,7 @@ while(<SPAMDB>){
 		next; 
 	} # for not being a domain
 	dbg("spf resolving $helo");
-	my @addrs=resove_helo(@helo);
+	my @addrs=resolve_helo(@helo);
 	dbg("spf lookup from ".substr($from, 1, -1)." for IP $src");
 	my $spf = $spf_server->process(Mail::SPF::Request->new(
 			scope           => 'mfrom',             # or 'helo', 'pra'
@@ -406,6 +428,24 @@ if ( defined $opts{n} ) {
 		print join("\n", sort keys %iph);
 		print "\n\n";
 	}
+}
+
+if ( defined $opts{e} ) {
+	if ( ! -d $opts{e} ) { die "export directory $opts{e} either does not exist or is not a directory\n"; }
+	chdir($opts{e}) or die "cant chdir to $opts{e}\n";
+	export_to_file("trapped", "TRAPPED");
+	export_to_file("unresolved", "UNRESOLVED");
+	export_to_file("nospam", "NOSPAM");
+	export_to_file("resolved", "RESOLVED");
+}
+
+if ( defined $opts{i} ) {
+	if ( ! -d $opts{i} ) { die "import directory $opts{i} either does not exist or is not a directory\n"; }
+	chdir($opts{i}) or die "cant chdir to $opts{i}\n";
+	import_file("trapped");
+	import_file("unresolved");
+	import_file("nospam");
+	import_file("resolved");
 }
 
 if ( defined $opts{d} ) {
