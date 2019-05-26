@@ -66,6 +66,12 @@ tie(%db, 'SDBM_File', '/var/db/whitescan', O_RDWR|O_CREAT, 0600)
 dbg("opening greylog");
 open(GRL, ">> /var/log/grey.log") or die "could not open grey.log";
 
+# some more or less global variables 
+my $time=time;
+my @white_helos=();
+my @trapped_helos=();
+my @trapped_src=();
+
 ######################################################################################
 # The library part, functs to be used in this script
 sub HELP_MESSAGE {
@@ -147,6 +153,7 @@ sub ip_string {
 sub export_to_file {
 	my $file=shift;
 	my $exp=shift;
+	dbg("exporting $exp to $file");
 	open(OUT, "> $file") or die "cant write to $file\n";
 	foreach my $key (sort grep {/^${exp}/} keys %db) {
 		print OUT "$key|$db{$key}\n";
@@ -156,12 +163,68 @@ sub export_to_file {
 
 sub import_file {
 	my $file=shift;
+	my $scheme=shift; # import scheme style
+	dbg("Importing $file to database with scheme $scheme");
 	open(IN, "< $file") or die "cant read from $file\n";
 	while(<IN>) {
 		chomp;
 		my ($T, $P, $F) = split(/\|/);
 		my $key="$T|$P";
-		if ( ! defined $db{$key} ) { $db{$key}=$F; }
+		if ( $scheme eq "unresolved" ) {
+			# value is a time and we keep the newer timestamp
+			#  This comes handy for UNRESOLVED hosts that are 
+			#  blocked for 24 hours
+			if ( ! defined $db{$key} ) { 
+				dbg("inserting new $key");
+				push(@trapped_src, $src);
+			}
+			elsif ( $db{$key} < $F ) { 
+				dbg("saving new timestamp for $key");
+				push(@trapped_src, $src);
+			}
+		}
+		elsif ( $scheme eq "nospam" ) {
+			# for each value we loaded here we have to check if we have to cleanup 
+			if ( $T ne "NOSPAM" ) {  
+				dbg("the keytype $T ($key) is not valid for scheme $scheme skipping");
+				next:
+			}
+			if ( $P ne $F ) {  
+				dbg("the data of $key is invalid ($F). skipping!");
+				next:
+			}
+			if ( ! defined $db{$key} ) { 
+				dbg("inserting $key to database");
+				my $trapped_key="TRAPPED|$P";
+				push(@white_helos, $F);
+				delete $db{$trapped_key};
+				$db{$key}=$F; 
+			}
+		}
+		elsif ( $scheme eq "trapped" ) {
+			# for each value we loaded here we have to check if we have to cleanup 
+			if ( $T ne "TRAPPED" ) {  
+				dbg("the keytype $T ($key) is not valid for scheme $scheme skipping");
+				next:
+			}
+			if ( $P ne $F ) {  
+				dbg("the data of $key is invalid ($F). skipping!");
+				next:
+			}
+			if ( ! defined $db{$key} ) { 
+				dbg("inserting $key to database");
+				my $nospam_key="NOSPAM|$P";
+				push(@trapped_helos, $F);
+				delete $db{$nospam_key};
+				$db{$key}=$F; 
+			}
+		}
+		else {
+			if ( ! defined $db{$key} ) { 
+				dbg("inserting new $key");
+				$db{$key}=$F; 
+			}
+		}
 	}
 	close IN;
 }
@@ -175,11 +238,6 @@ sub hrtime {
 
 ################################################################################
 # Main workflow parsing spamdb output 
-my $time=time;
-my @white_helos=();
-my @trapped_helos=();
-my @trapped_src=();
-
 dbg("starting up reading spamdb");
 open(SPAMDB, "spamdb |") or die "could not spawn spamdb";
 while(<SPAMDB>){ 
@@ -311,6 +369,18 @@ close SPAMDB;
 #
 # this has to be at the right spot in the code to be effective not in the end 
 # as the rest of the parameter if statements are
+
+# importing of database files takes place before -N and -T options are processed and 
+# more important before the @trapped_helos and @white_helos is being processed
+if ( defined $opts{i} ) {
+	if ( ! -d $opts{i} ) { die "import directory $opts{i} either does not exist or is not a directory\n"; }
+	chdir($opts{i}) or die "cant chdir to $opts{i}\n";
+	import_file("resolved"); # we want to update resolved db 1st
+	import_file("nospam", "nospam"); # as in order with the code later first whitelist then trap
+	import_file("trapped", "trapped");
+	import_file("unresolved", "unresolved");
+}
+
 if ( defined $opts{N} ) {
 	dbg("helo $opts{N} is put in NOSPAM status as requested by the user (-N)");
 	push(@white_helos, $opts{N});
@@ -362,7 +432,7 @@ my $traptime=$time+(60*60*24); # trap for 24 hours
 foreach my $src (@trapped_src) {
 	dbg("spamdb -a -t $addr"); 
 	system("spamdb -a -t $addr");
-	# trap for 5 days 
+	# trap for some time
 	$db{"UNRESOLVED|$src"}=$traptime;
 }
 dbg("untrapping src to give them a try");
@@ -448,14 +518,6 @@ if ( defined $opts{e} ) {
 	export_to_file("resolved", "RESOLVED");
 }
 
-if ( defined $opts{i} ) {
-	if ( ! -d $opts{i} ) { die "import directory $opts{i} either does not exist or is not a directory\n"; }
-	chdir($opts{i}) or die "cant chdir to $opts{i}\n";
-	import_file("trapped");
-	import_file("unresolved");
-	import_file("nospam");
-	import_file("resolved");
-}
 
 if ( defined $opts{d} ) {
 	foreach my $k (sort keys %db) { 
