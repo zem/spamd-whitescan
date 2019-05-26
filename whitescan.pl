@@ -51,7 +51,7 @@ $GREYLOG='/var/log/grey.log';
 my $spf_server  = Mail::SPF::Server->new();
 
 my %opts;
-getopts('hvdntD:p:T:N:i:e:', \%opts);
+getopts('hHvdntD:p:T:N:i:e:', \%opts);
 
 if ( defined $opts{h} ) { HELP_MESSAGE(); }
 if ( ! defined $opts{p} ) { $opts{p}=30; }
@@ -81,6 +81,7 @@ sub HELP_MESSAGE {
 	print STDERR "     --help the very same help \n";
 	print STDERR "     -v be verbose on stderr eg. log what you are doing\n";
 	print STDERR "     -d dump the database content for debugging \n";
+	print STDERR "     -H print all times ( -d and grey.log ) human readable\n";
 	print STDERR "     -n create a formatted <nospamd> table from this database \n";
 	print STDERR "     -t create a formatted <spamd> traplist table from this database \n";
 	print STDERR "     -p MINUTES set passtime in minutes, default 20 \n";
@@ -165,6 +166,13 @@ sub import_file {
 	close IN;
 }
 
+# returning human readable timestamp if the user wants one 
+sub hrtime {
+	my $t=shift;
+	if ( ! defined $opts{H} ) { return $t; }
+	return strftime('%Y-%m-%d %H:%M:%S', localtime($t));
+}
+
 ################################################################################
 # Main workflow parsing spamdb output 
 my $time=time;
@@ -199,16 +207,17 @@ while(<SPAMDB>){
 	# first we store GREY entrys to the hash as they are
 	$grey_key="GREY|$src|$helo|$from|$to";
 	$value="$first|$passed|$expire|$block|$pass";
+	$hrvalue=hrtime($first)."|".hrtime($passed)."|".hrtime($expire)."|$block|$pass";
 	if ( defined $db{$grey_key} ) { 
 		if ( $db{$grey_key} ne $value ){
 			$db{$grey_key}=$value;
-			print GRL "$grey_key|$value\n";
+			print GRL "$grey_key|$hrvalue\n";
 		}
 		#dbg("grey entry already seen", $helo, $src, $from, $to);
 		next; 
 	} # we have already seen and processed this greylist entry
 	$db{$grey_key}=$value;
-	print GRL "$grey_key|$value\n";
+	print GRL "$grey_key|$hrvalue\n";
 
 
 	if ( test_helo($helo) == 0 ) { 
@@ -450,7 +459,21 @@ if ( defined $opts{i} ) {
 
 if ( defined $opts{d} ) {
 	foreach my $k (sort keys %db) { 
-		print $k.": ".$db{$k}."\n";
+		if ( $k ~ /^UNRESOLVED/ ) {
+			print $k.": ".hrtime($db{$k})."\n";
+		} elsif ( $k ~ /^PASS/ ) {
+			print $k.": ".hrtime($db{$k})."\n";
+		} elsif ( $k ~ /^EXPIRE/ ) {
+			print $k.": ".hrtime($db{$k})."\n";
+		} elsif ( $k ~ /^GREY/ ) {
+			my @l=split('\|', $db{$k});
+			$l[0]=hrtime($l[0]);
+			$l[1]=hrtime($l[1]);
+			$l[2]=hrtime($l[2]);
+			print $k.": ".join('|', @l)."\n";
+		} else {
+			print $k.": ".$db{$k}."\n";
+		}
 	}
 } 
 
