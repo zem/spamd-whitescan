@@ -459,13 +459,13 @@ if ( defined $opts{i} ) {
 
 if ( defined $opts{d} ) {
 	foreach my $k (sort keys %db) { 
-		if ( $k ~ /^UNRESOLVED/ ) {
+		if ( $k =~ /^UNRESOLVED/ ) {
 			print $k.": ".hrtime($db{$k})."\n";
-		} elsif ( $k ~ /^PASS/ ) {
+		} elsif ( $k =~ /^PASS/ ) {
 			print $k.": ".hrtime($db{$k})."\n";
-		} elsif ( $k ~ /^EXPIRE/ ) {
+		} elsif ( $k =~ /^EXPIRE/ ) {
 			print $k.": ".hrtime($db{$k})."\n";
-		} elsif ( $k ~ /^GREY/ ) {
+		} elsif ( $k =~ /^GREY/ ) {
 			my @l=split('\|', $db{$k});
 			$l[0]=hrtime($l[0]);
 			$l[1]=hrtime($l[1]);
