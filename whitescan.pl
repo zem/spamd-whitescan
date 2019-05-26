@@ -174,6 +174,10 @@ sub import_file {
 			# value is a time and we keep the newer timestamp
 			#  This comes handy for UNRESOLVED hosts that are 
 			#  blocked for 24 hours
+			if ( $T ne "UNRESOLVED" ) {  
+				dbg("the keytype $T ($key) is not valid for scheme $scheme skipping");
+				next;
+			}
 			if ( ! defined $db{$key} ) { 
 				dbg("inserting new $key");
 				push(@trapped_src, $P);
@@ -191,11 +195,11 @@ sub import_file {
 			# for each value we loaded here we have to check if we have to cleanup 
 			if ( $T ne "NOSPAM" ) {  
 				dbg("the keytype $T ($key) is not valid for scheme $scheme skipping");
-				next:
+				next;
 			}
 			if ( $P ne $F ) {  
 				dbg("the data of $key is invalid ($F). skipping!");
-				next:
+				next;
 			}
 			if ( ! defined $db{$key} ) { 
 				dbg("inserting $key to database");
@@ -434,8 +438,8 @@ foreach my $helo (@trapped_helos) {
 dbg("trapping src");
 my $traptime=$time+(60*60*24); # trap for 24 hours
 foreach my $src (@trapped_src) {
-	dbg("spamdb -a -t $addr"); 
-	system("spamdb -a -t $addr");
+	dbg("spamdb -a -t $src"); 
+	system("spamdb -a -t $src");
 	# trap for some time
 	$db{"UNRESOLVED|$src"}=$traptime;
 }
