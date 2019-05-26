@@ -12,7 +12,7 @@ ${WHITESCAN} -i ${EXPORT} || exit $?
 if [[ $1 == "push" ]]
 then
         ${WHITESCAN} -e ${EXPORT} || exit $?
-        git commit -m "updated records" || exit 0
+        git commit -a -m "updated records" || exit 0
         git push
 fi
 
