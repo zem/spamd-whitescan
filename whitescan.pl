@@ -178,6 +178,10 @@ sub import_file {
 				dbg("inserting new $key");
 				push(@trapped_src, $src);
 			}
+			elsif ( $F < $time ) { 
+				dbg("timestamp $F on $key is smaller than current time $time. skipping!");
+				next;
+			}
 			elsif ( $db{$key} < $F ) { 
 				dbg("saving new timestamp for $key");
 				push(@trapped_src, $src);
