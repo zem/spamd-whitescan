@@ -176,7 +176,7 @@ sub import_file {
 			#  blocked for 24 hours
 			if ( ! defined $db{$key} ) { 
 				dbg("inserting new $key");
-				push(@trapped_src, $src);
+				push(@trapped_src, $P);
 			}
 			elsif ( $F < $time ) { 
 				dbg("timestamp $F on $key is smaller than current time $time. skipping!");
@@ -184,7 +184,7 @@ sub import_file {
 			}
 			elsif ( $db{$key} < $F ) { 
 				dbg("saving new timestamp for $key");
-				push(@trapped_src, $src);
+				push(@trapped_src, $P);
 			}
 		}
 		elsif ( $scheme eq "nospam" ) {
