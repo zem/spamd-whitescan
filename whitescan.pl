@@ -15,11 +15,12 @@
 # ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 # 
-# do some whitelist scanning using regex sets
-# 
-# TOTEST: Handle SPF entrys if they exist properly, eg trap/tarpit all ips 
-# pretending to send from a domain that are not listed in spf
+#######################################################################################
 #
+#Notes part:
+#
+# TODO do some whitelist scanning using regex sets
+# 
 # no SPF==classic handling 
 # ---------------------------
 # HELO|SPF|OK
@@ -27,12 +28,6 @@
 #  NO | OK|OK if its also reversing and domain matches
 #  OK | NO|NO definately fraud, sending domain tells us
 #  NO | NO|NO definately tarpit this
-#
-# TODO2: having 2 conf directorys with lists that are read when touched, 
-# containing NOSPAM: and TRAPPED: lists. Those lists can be provided 
-# Externally 
-#
-# TODO3: Export NOSPAMD and TRAPPED lists 
 #
 ######################################################################################
 # Setup part to make load librarys and initialize vars and parse argv
@@ -108,7 +103,7 @@ sub test_helo {
 	my $helostr=shift;
 	# TODO Insert code regex to ignore certain helos here if ever needed 
 	my @helo=split('\.', $helostr);
-	if ( $#helo > 1 ) { return 1; } # if helo is not foo.bar.sth it is to short for processing
+	if ( $#helo > 0 ) { return 1; } # if helo is not foo.bar.sth it is to short for processing, we process foo.bar too but we dont strip that later. 
 	return 0;
 }
 
@@ -136,6 +131,7 @@ sub compare_helo_addr {
 sub strip_helo {
 	my @helo=split('\.', shift);
 	my $foo=shift(@helo);
+	if ( $#helo == 0 ) { return join('.', $foo, @helo); }
 	return join('.', @helo);
 }
 
