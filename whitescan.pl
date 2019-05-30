@@ -269,11 +269,11 @@ while(<SPAMDB>){
 	# first we store GREY entrys to the hash as they are
 	$grey_key="GREY|$src|$helo|$from|$to";
 	$value="$first|$passed|$expire|$block|$pass";
-	$hrvalue=hrtime($first)."|".hrtime($passed)."|".hrtime($expire)."|$block|$pass";
+	#$hrvalue=hrtime($first)."|".hrtime($passed)."|".hrtime($expire)."|$block|$pass";
 	if ( defined $db{$grey_key} ) { 
 		if ( $db{$grey_key} ne $value ){
 			$db{$grey_key}=$value;
-			print GRL "$grey_key|$hrvalue\n";
+			print GRL "$grey_key|$value\n";
 		}
 		#dbg("grey entry already seen", $helo, $src, $from, $to);
 		next; 
