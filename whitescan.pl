@@ -46,7 +46,7 @@ $GREYLOG='/var/log/grey.log';
 my $spf_server  = Mail::SPF::Server->new();
 
 my %opts;
-getopts('hHvdntD:p:T:N:i:e:', \%opts);
+getopts('hHvdntuD:p:T:N:i', \%opts);
 
 if ( defined $opts{h} ) { HELP_MESSAGE(); }
 if ( ! defined $opts{p} ) { $opts{p}=30; }
@@ -83,14 +83,14 @@ sub HELP_MESSAGE {
 	print STDERR "     -v be verbose on stderr eg. log what you are doing\n";
 	print STDERR "     -d dump the database content for debugging \n";
 	print STDERR "     -H print all times ( -d and grey.log ) human readable\n";
-	print STDERR "     -n create a formatted <nospamd> table from this database \n";
-	print STDERR "     -t create a formatted <spamd> traplist table from this database \n";
+	print STDERR "     -n export nospam database entrys and their resolved entrys\n";
+	print STDERR "     -t export trapped entrys and their resolved entrys \n";
+	print STDERR "     -u export unresolved entrys on stdout\n";
 	print STDERR "     -p MINUTES set passtime in minutes, default 20 \n";
-	print STDERR "     -D SOME_DB_KEY  deletes a key from the database\n";
+	print STDERR "     -D SOME_DB_KEY deletes a key from the database\n";
 	print STDERR "     -T SOME_HELO  sets a HELO Trap\n";
 	print STDERR "     -N SOME_HELO  sets a HELO as nospam\n";
-	print STDERR "     -e EXPORT_DIR export trapped nospam and resolved data to this directory\n";
-	print STDERR "     -i IMPORT_DIR import trapped nospam and resolved data from this directory\n";
+	print STDERR "     -i import exported trapped entrys (used in combination with -t -n and -u)\n";
 	exit;
 }
 
@@ -144,93 +144,6 @@ sub ip_hash {
 sub ip_string {
 	my %iph=@_;
 	return join('|', keys(%iph));
-}
-
-sub export_to_file {
-	my $file=shift;
-	my $exp=shift;
-	dbg("exporting $exp to $file");
-	open(OUT, "> $file") or die "cant write to $file\n";
-	foreach my $key (sort grep {/^${exp}/} keys %db) {
-		print OUT "$key|$db{$key}\n";
-	}
-	close OUT;
-}
-
-sub import_file {
-	my $file=shift;
-	my $scheme=shift; # import scheme style
-	dbg("Importing $file to database with scheme $scheme");
-	open(IN, "< $file") or die "cant read from $file\n";
-	while(<IN>) {
-		chomp;
-		my ($T, $P, $F) = split(/\|/);
-		my $key="$T|$P";
-		if ( $scheme eq "unresolved" ) {
-			# value is a time and we keep the newer timestamp
-			#  This comes handy for UNRESOLVED hosts that are 
-			#  blocked for 24 hours
-			if ( $T ne "UNRESOLVED" ) {  
-				dbg("the keytype $T ($key) is not valid for scheme $scheme skipping");
-				next;
-			}
-			if ( ! defined $db{$key} ) { 
-				dbg("inserting new $key");
-				push(@trapped_src, $P);
-			}
-			elsif ( $F < $time ) { 
-				dbg("timestamp $F on $key is smaller than current time $time. skipping!");
-				next;
-			}
-			elsif ( $db{$key} < $F ) { 
-				dbg("saving new timestamp for $key");
-				push(@trapped_src, $P);
-			}
-		}
-		elsif ( $scheme eq "nospam" ) {
-			# for each value we loaded here we have to check if we have to cleanup 
-			if ( $T ne "NOSPAM" ) {  
-				dbg("the keytype $T ($key) is not valid for scheme $scheme skipping");
-				next;
-			}
-			if ( $P ne $F ) {  
-				dbg("the data of $key is invalid ($F). skipping!");
-				next;
-			}
-			if ( ! defined $db{$key} ) { 
-				dbg("inserting $key to database");
-				my $trapped_key="TRAPPED|$P";
-				push(@white_helos, $F);
-				delete $db{$trapped_key};
-				$db{$key}=$F; 
-			}
-		}
-		elsif ( $scheme eq "trapped" ) {
-			# for each value we loaded here we have to check if we have to cleanup 
-			if ( $T ne "TRAPPED" ) {  
-				dbg("the keytype $T ($key) is not valid for scheme $scheme skipping");
-				next:
-			}
-			if ( $P ne $F ) {  
-				dbg("the data of $key is invalid ($F). skipping!");
-				next:
-			}
-			if ( ! defined $db{$key} ) { 
-				dbg("inserting $key to database");
-				my $nospam_key="NOSPAM|$P";
-				push(@trapped_helos, $F);
-				delete $db{$nospam_key};
-				$db{$key}=$F; 
-			}
-		}
-		else {
-			if ( ! defined $db{$key} ) { 
-				dbg("inserting new $key");
-				$db{$key}=$F; 
-			}
-		}
-	}
-	close IN;
 }
 
 # returning human readable timestamp if the user wants one 
@@ -376,13 +289,87 @@ close SPAMDB;
 
 # importing of database files takes place before -N and -T options are processed and 
 # more important before the @trapped_helos and @white_helos is being processed
+# when the database is getting imported data is read from STDIN and the flags t n u 
+# define the scope of the content to be imported, for RESOLVED and NOSPAM or RESOLVED 
+# and TRAPPED entrys.  
 if ( defined $opts{i} ) {
-	if ( ! -d $opts{i} ) { die "import directory $opts{i} either does not exist or is not a directory\n"; }
-	chdir($opts{i}) or die "cant chdir to $opts{i}\n";
-	import_file("resolved"); # we want to update resolved db 1st
-	import_file("nospam", "nospam"); # as in order with the code later first whitelist then trap
-	import_file("trapped", "trapped");
-	import_file("unresolved", "unresolved");
+	while(<STDIN>) {
+		chomp;
+		my ($T, $P, @l) = split(/\|/);
+		my $F=join('|', @l);
+		my $key="$T|$P";
+
+		my %perm;
+		if ( $opts{t} ) {
+			$perm{RESOLVED}=1;
+			$perm{TRAPPED}=1;
+		}
+		if ( $opts{n} ) {
+			$perm{RESOLVED}=1;
+			$perm{NOSPAM}=1;
+		}
+		if ( $opts{u} ) { $perm{UNRESOLVED}=1; }
+
+		if ( $T eq "RESOLVED" ) {
+			if ( ! defined $perm{RESOLVED} ) {
+				dbg("the keytype $T ($key) read from stdin is allowed to be imported from this source! skipping.");
+				next;
+			}
+			if ( ! defined $db{$key} ) { 
+				dbg("inserting new $key");
+				$db{$key}=$F; 
+			}
+		} elsif ( $T eq "UNRESOLVED" ) {
+			if ( ! defined $perm{UNRESOLVED} ) {
+				dbg("the keytype $T ($key) read from stdin is allowed to be imported from this source! skipping.");
+				next;
+			}
+			if ( ! defined $db{$key} ) { 
+				dbg("inserting new $key");
+				push(@trapped_src, $P);
+			}
+			elsif ( $F < $time ) { 
+				dbg("timestamp $F on $key is smaller than current time $time. skipping!");
+				next;
+			}
+			elsif ( $db{$key} < $F ) { 
+				dbg("saving new timestamp for $key");
+				push(@trapped_src, $P);
+			}
+		} elsif ( $T eq "NOSPAM" ) {
+			if ( ! defined $perm{NOSPAM} ) {
+				dbg("the keytype $T ($key) read from stdin is allowed to be imported from this source! skipping.");
+				next;
+			}
+			if ( $P ne $F ) {  
+				dbg("the data of $key is invalid ($F). skipping!");
+				next;
+			}
+			if ( ! defined $db{$key} ) { 
+				dbg("inserting $key to database");
+				my $trapped_key="TRAPPED|$P";
+				push(@white_helos, $F);
+				delete $db{$trapped_key};
+				$db{$key}=$F; 
+			}
+		} elsif ( $T eq "TRAPPED" ) {
+			if ( ! defined $perm{TRAPPED} ) {
+				dbg("the keytype $T ($key) read from stdin is allowed to be imported from this source! skipping.");
+				next;
+			}
+			if ( $P ne $F ) {  
+				dbg("the data of $key is invalid ($F). skipping!");
+				next:
+			}
+			if ( ! defined $db{$key} ) { 
+				dbg("inserting $key to database");
+				my $nospam_key="NOSPAM|$P";
+				push(@trapped_helos, $F);
+				delete $db{$nospam_key};
+				$db{$key}=$F; 
+			}
+		}
+	}
 }
 
 if ( defined $opts{N} ) {
@@ -479,49 +466,39 @@ if ( defined $opts{D} ) {
         delete $db{$opts{D}};
 }
 
-if ( defined $opts{t} ) {
-	foreach my $key (sort grep {/^TRAPPED/} keys %db) {
-		# this helo is or was once whitelisted
-		my $helo = $db{$key};
-		print "# IP traplist for $helo\n";
-		my @resolved_keys=sort grep {/$helo$/} grep {/^RESOLVED/} keys %db;
-		my @ipa;
-		foreach my $k (@resolved_keys) { 
-			print "# $k\n"; 
-			push(@ipa, ip_hash($db{$k}));
+# do not dump out stuff if we import things 
+if ( ! defined $opts{i} ) {
+	if ( defined $opts{t} ) {
+		foreach my $key (sort grep {/^TRAPPED/} keys %db) {
+			# this helo is or was once whitelisted
+			my $helo = $db{$key};
+			my @resolved_keys=sort grep {/$helo$/} grep {/^RESOLVED/} keys %db;
+			foreach my $k (@resolved_keys) { 
+				print "$k|$db{$k}\n";
+			}
+			print "$key|$db{$key}\n";
 		}
-		my %iph=@ipa;
-		print join("\n", sort keys %iph);
-		print "\n\n";
+	}
+
+	if ( defined $opts{n} ) {
+		foreach my $key (sort grep {/^NOSPAM/} keys %db) {
+			# this helo is or was once whitelisted
+			my $helo = $db{$key};
+			my @resolved_keys=sort grep {/$helo$/} grep {/^RESOLVED/} keys %db;
+			foreach my $k (@resolved_keys) { 
+				print "$k|$db{$k}\n";
+			}
+			print "$key|$db{$key}\n";
+		}
+	}
+
+	# print unresolved to stdout 
+	if ( defined $opts{u} ) {
+		foreach my $key (sort grep {/^UNRESOLVED/} keys %db) {
+			print "$key|$db{$key}\n";
+		}
 	}
 }
-
-if ( defined $opts{n} ) {
-	foreach my $key (sort grep {/^NOSPAM/} keys %db) {
-		# this helo is or was once whitelisted
-		my $helo = $db{$key};
-		print "# IP whitelist for $helo\n";
-		my @resolved_keys=sort grep {/$helo$/} grep {/^RESOLVED/} keys %db;
-		my @ipa;
-		foreach my $k (@resolved_keys) { 
-			print "# $k\n"; 
-			push(@ipa, ip_hash($db{$k}));
-		}
-		my %iph=@ipa;
-		print join("\n", sort keys %iph);
-		print "\n\n";
-	}
-}
-
-if ( defined $opts{e} ) {
-	if ( ! -d $opts{e} ) { die "export directory $opts{e} either does not exist or is not a directory\n"; }
-	chdir($opts{e}) or die "cant chdir to $opts{e}\n";
-	export_to_file("trapped", "TRAPPED");
-	export_to_file("unresolved", "UNRESOLVED");
-	export_to_file("nospam", "NOSPAM");
-	export_to_file("resolved", "RESOLVED");
-}
-
 
 if ( defined $opts{d} ) {
 	foreach my $k (sort keys %db) { 
