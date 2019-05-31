@@ -192,7 +192,7 @@ while(<SPAMDB>){
 		next; 
 	} # we have already seen and processed this greylist entry
 	$db{$grey_key}=$value;
-	print GRL "$grey_key|$hrvalue\n";
+	print GRL "$grey_key|$value\n";
 
 
 	if ( test_helo($helo) == 0 ) { 
@@ -201,7 +201,7 @@ while(<SPAMDB>){
 		next; 
 	} # for not being a domain
 	dbg("spf resolving $helo");
-	my @addrs=resolve_helo(@helo);
+	my @addrs=resolve_helo($helo);
 	dbg("spf lookup from ".substr($from, 1, -1)." for IP $src");
 	my $spf = $spf_server->process(Mail::SPF::Request->new(
 			scope           => 'mfrom',             # or 'helo', 'pra'
@@ -220,8 +220,9 @@ while(<SPAMDB>){
 
 	if ( compare_helo_addr($src, @addrs) == 0 ) { 
 		# domain does not resolve and does not pass spf
+		dbg("The helo $helo could not be compared src $src == ".join(' ', @addrs));
 		if ( $spf->code ne 'pass' ) {
-			dbg("spf lookup from ".substr($from, 1, -1));
+			dbg("spf lookup not passed from ".substr($from, 1, -1)." ".$spf->code);
 			push(@trapped_src, $src);
 			next; 
 		}
