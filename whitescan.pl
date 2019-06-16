@@ -432,7 +432,7 @@ foreach my $key (grep {/^UNRESOLVED/} keys %db) {
 	if ( $db{$key} < $time ) {
 		my $addr=substr($key,11);
 		dbg("spamdb -d $addr"); 
-		system("spamdb -d $addr"); 
+		system("spamdb -d $addr 2> /dev/null"); 
 		delete $db{$key};
 	}
 }
