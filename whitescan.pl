@@ -39,7 +39,7 @@ use Getopt::Std;
 use Mail::SPF;
 use POSIX 'strftime';
 
-$VERSION='0.9.1';
+$VERSION='0.9.2';
 
 $GREYLOG='/var/log/grey.log';
 
@@ -203,15 +203,23 @@ while(<SPAMDB>){
 	dbg("spf resolving $helo");
 	my @addrs=resolve_helo($helo);
 	dbg("spf lookup from ".substr($from, 1, -1)." for IP $src");
-	my $spf = $spf_server->process(Mail::SPF::Request->new(
-			scope           => 'mfrom',             # or 'helo', 'pra'
-			identity        => substr($from, 1, -1),
-			ip_address      => $src,
-		)
-	);
+	my $spf_identity=substr($from, 1, -1);
+	my $spf_code="none"
+	if ( $spf_identity eq "" ) {
+		dbg("The ip $src has trying to send mail with no identity.");
+	} else {
+		my $spf = $spf_server->process(Mail::SPF::Request->new(
+				scope           => 'mfrom',             # or 'helo', 'pra'
+				identity        => $spf_identity,
+				ip_address      => $src,
+			)
+		);
+		$spf_code=$spf->code;
+	}
+
 	# check spf cone anyway if its neither none or pass, trap the host
-	if ( $spf->code ne 'none' ) {
-		if ( $spf->code ne 'pass' ) {
+	if ( $spf_code ne 'none' ) {
+		if ( $spf_code ne 'pass' ) {
 			dbg("The ip $src is not listed in the spf record of $from");
 			push(@trapped_src, $src);
 			next; 
@@ -221,8 +229,13 @@ while(<SPAMDB>){
 	if ( compare_helo_addr($src, @addrs) == 0 ) { 
 		# domain does not resolve and does not pass spf
 		dbg("The helo $helo could not be compared src $src == ".join(' ', @addrs));
-		if ( $spf->code ne 'pass' ) {
-			dbg("spf lookup not passed from ".substr($from, 1, -1)." ".$spf->code);
+		if ( $spf_code ne 'pass' ) {
+			if ( $spf_identity eq "" ) and ( defined $db{"RESOLVED|$helo"} ) {
+				dbg("No rcpt-from and unresolveable but known domain $helo");
+				dbg("I cant do anything here but skipping to next");
+				next;
+			}
+			dbg("spf lookup not passed from ".substr($from, 1, -1)." ".$spf_code);
 			push(@trapped_src, $src);
 			next; 
 		}
