@@ -204,7 +204,7 @@ while(<SPAMDB>){
 	my @addrs=resolve_helo($helo);
 	dbg("spf lookup from ".substr($from, 1, -1)." for IP $src");
 	my $spf_identity=substr($from, 1, -1);
-	my $spf_code="none"
+	my $spf_code="none";
 	if ( $spf_identity eq "" ) {
 		dbg("The ip $src has trying to send mail with no identity.");
 	} else {
@@ -230,7 +230,7 @@ while(<SPAMDB>){
 		# domain does not resolve and does not pass spf
 		dbg("The helo $helo could not be compared src $src == ".join(' ', @addrs));
 		if ( $spf_code ne 'pass' ) {
-			if ( $spf_identity eq "" ) and ( defined $db{"RESOLVED|$helo"} ) {
+			if (( $spf_identity eq "" ) and ( defined $db{"RESOLVED|$helo"} )) {
 				dbg("No rcpt-from and unresolveable but known domain $helo");
 				dbg("I cant do anything here but skipping to next");
 				next;
