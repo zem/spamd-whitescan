@@ -257,10 +257,12 @@ while(<SPAMDB>){
 	$expire_key="EXPIRE|$helo|$from|$to";
 	if ( ! defined $db{$pass_key} ) {
 		dbg($pass_key, "is not yet in db");
+		dbg("testing for NOSPAM|$helo");
+		dbg("testing for TRAPPED|$helo");
+		# Check for nospam keys
+		# we do not register PASS or EXPIRE if the 
 		# this thing is new so lets reg
 		# $db{$helo_key}=1;
-		$db{$pass_key}=$passed;
-		$db{$expire_key}=$expire;
 		if ( defined $db{"NOSPAM|$helo"} ) {
 			dbg("Whitelisting", $helo);
 			# we do already know this $helo whitelist immidiately
@@ -272,6 +274,11 @@ while(<SPAMDB>){
 			$db{"TRAPPED|$helo"}=$helo;
 			push(@trapped_helos, $helo);
 			delete $db{"NOSPAM|$helo"};
+		} else {
+			dbg("registering", $pass_key, "to db");
+			dbg("registering", $expire_key, "to db");
+			$db{$pass_key}=$passed;
+			$db{$expire_key}=$expire;
 		}
 	} else {
 		# $db{$helo_key}=$db{$helo_key}+1;
