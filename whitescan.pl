@@ -274,6 +274,12 @@ while(<SPAMDB>){
 			$db{"TRAPPED|$helo"}=$helo;
 			push(@trapped_helos, $helo);
 			delete $db{"NOSPAM|$helo"};
+		} elsif ( $helo =~ /^shaxi.*\....$/ ) { # I will do some regex based configuration for sure soon 
+			dbg("Trapping regex", $helo);
+			# This Helo is well known and needs to be trapped immidiately
+			$db{"TRAPPED|$helo"}=$helo;
+			push(@trapped_helos, $helo);
+			delete $db{"NOSPAM|$helo"};
 		} else {
 			dbg("registering", $pass_key, "to db");
 			dbg("registering", $expire_key, "to db");
@@ -288,6 +294,12 @@ while(<SPAMDB>){
 			if ( defined $db{"TRAPPED|$helo"} ) {
 				dbg("PASSTIME Exceeded but HELO is trapped Trapping", $helo);
 				# this part should never run but to be complete here 
+				$db{"TRAPPED|$helo"}=$helo;
+				push(@trapped_helos, $helo);
+				delete $db{"NOSPAM|$helo"};
+			} elsif ( $helo =~ /^shaxi.*\....$/ ) { # I will do some regex based configuration for sure soon 
+				dbg("Trapping regex", $helo);
+				# This Helo is well known and needs to be trapped immidiately
 				$db{"TRAPPED|$helo"}=$helo;
 				push(@trapped_helos, $helo);
 				delete $db{"NOSPAM|$helo"};
