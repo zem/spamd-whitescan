@@ -86,4 +86,6 @@ PARAMETERS:
      -i IMPORT_DIR import trapped nospam and resolved data from this directory
 ```
 
+## IDEA
+Stop processing if dns resolving does not work at all. 
 
