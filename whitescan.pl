@@ -1,12 +1,12 @@
 #!/usr/bin/perl
-# 
-# Copyright (c) 2019 Hans Freitag <hans.freitag@conesphere.com> 
+#
+# Copyright (c) 2019 Hans Freitag <hans.freitag@conesphere.com>
 #     gpg 1553A52AE25725279D8A499175E880E6DC59190F
-# 
+#
 # Permission to use, copy, modify, and distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
 # copyright notice and this permission notice appear in all copies.
-# 
+#
 # THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
 # WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
 # MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
@@ -14,14 +14,14 @@
 # WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 # ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-# 
+#
 #######################################################################################
 #
 #Notes part:
 #
 # TODO do some whitelist scanning using regex sets
-# 
-# no SPF==classic handling 
+#
+# no SPF==classic handling
 # ---------------------------
 # HELO|SPF|OK
 #  OK | OK|OK
@@ -50,18 +50,40 @@ getopts('hHvdntuD:p:T:N:i', \%opts);
 
 if ( defined $opts{h} ) { HELP_MESSAGE(); }
 if ( ! defined $opts{p} ) { $opts{p}=30; }
-if ( $opts{p} !~ /^\d+$/ ) { 
+if ( $opts{p} !~ /^\d+$/ ) {
 	print STDERR "Warning -p $opts{p} is not numeric, using default \n";
-	$opts{p}=30; 
+	$opts{p}=30;
 }
 
 tie(%db, 'SDBM_File', '/var/db/whitescan', O_RDWR|O_CREAT, 0600)
   or die "Couldn't tie SDBM file '/var/db/whitescan': $!; aborting";
 
+tie(%db_pass, 'SDBM_File', '/var/db/whitescan_pass', O_RDWR|O_CREAT, 0600)
+  or die "Couldn't tie SDBM file '/var/db/whitescan_pass': $!; aborting";
+
+tie(%db_grey, 'SDBM_File', '/var/db/whitescan_grey', O_RDWR|O_CREAT, 0600)
+  or die "Couldn't tie SDBM file '/var/db/whitescan_grey': $!; aborting";
+
+tie(%db_trapped, 'SDBM_File', '/var/db/whitescan_trapped', O_RDWR|O_CREAT, 0600)
+  or die "Couldn't tie SDBM file '/var/db/whitescan_trapped': $!; aborting";
+
+tie(%db_resolved, 'SDBM_File', '/var/db/whitescan_resolved', O_RDWR|O_CREAT, 0600)
+  or die "Couldn't tie SDBM file '/var/db/whitescan_resolved': $!; aborting";
+
+tie(%db_nospam, 'SDBM_File', '/var/db/whitescan_nospam', O_RDWR|O_CREAT, 0600)
+  or die "Couldn't tie SDBM file '/var/db/whitescan_nospam': $!; aborting";
+
+tie(%db_unresolved, 'SDBM_File', '/var/db/whitescan_unresolved', O_RDWR|O_CREAT, 0600)
+  or die "Couldn't tie SDBM file '/var/db/whitescan_unresolved': $!; aborting";
+
+tie(%db_expire, 'SDBM_File', '/var/db/whitescan_expire', O_RDWR|O_CREAT, 0600)
+  or die "Couldn't tie SDBM file '/var/db/whitescan_expire': $!; aborting";
+
 dbg("opening greylog");
 open(GRL, ">> /var/log/grey.log") or die "could not open grey.log";
 
-# some more or less global variables 
+
+# some more or less global variables
 my $time=time;
 my @white_helos=();
 my @trapped_helos=();
@@ -101,9 +123,9 @@ sub dbg {
 
 sub test_helo {
 	my $helostr=shift;
-	# TODO Insert code regex to ignore certain helos here if ever needed 
+	# TODO Insert code regex to ignore certain helos here if ever needed
 	my @helo=split('\.', $helostr);
-	if ( $#helo > 0 ) { return 1; } # if helo is not foo.bar.sth it is to short for processing, we process foo.bar too but we dont strip that later. 
+	if ( $#helo > 0 ) { return 1; } # if helo is not foo.bar.sth it is to short for processing, we process foo.bar too but we dont strip that later.
 	return 0;
 }
 
@@ -146,7 +168,7 @@ sub ip_string {
 	return join('|', keys(%iph));
 }
 
-# returning human readable timestamp if the user wants one 
+# returning human readable timestamp if the user wants one
 sub hrtime {
 	my $t=shift;
 	if ( ! defined $opts{H} ) { return $t; }
@@ -154,51 +176,96 @@ sub hrtime {
 }
 
 ################################################################################
-# Main workflow parsing spamdb output 
+# This is some compatibility code as we try to split the single DBM Database into
+# multiple Databases we have to convert the old DB format into a new one.
+################################################################################
+foreach my $key (keys %db) {
+	my ($d, @k)=split('|', $key);
+	if ($d == "GREY") {
+		$db_grey{join('|', @k)}=$db{$key} or die "cant write key $key to new db";
+	} elsif ($d == "PASS") {
+		$db_pass{join('|', @k)}=$db{$key} or die "cant write key $key to new db";
+	} elsif ($d == "EXPIRE") {
+		$db_expire{join('|', @k)}=$db{$key} or die "cant write key $key to new db";
+	} elsif ($d == "NOSPAM") {
+		$db_nospam{join('|', @k)}=$db{$key} or die "cant write key $key to new db";
+	} elsif ($d == "TRAPPED") {
+		$db_trapped{join('|', @k)}=$db{$key} or die "cant write key $key to new db";
+	} elsif ($d == "RESOLVED") {
+		$db_resolved{join('|', @k)}=$db{$key} or die "cant write key $key to new db";
+	} elsif ($d == "UNRESOLVED") {
+		$db_unresolved{join('|', @k)}=$db{$key} or die "cant write key $key to new db";
+	} else {
+		die "The DB key $key is of unknown type stopping here\n";
+	}
+	delete $db{$key} or die "cant delete key $key from old db";
+}
+
+# Spamdb will not be called for db import or if other administrative tasks
+# will be made
+if (
+	( ! defined $opts{i} )
+		and
+	( ! defined $opts{d} )
+		and
+	( ! defined $opts{n} )
+		and
+	( ! defined $opts{u} )
+		and
+	( ! defined $opts{T} )
+		and
+	( ! defined $opts{D} )
+		and
+	( ! defined $opts{N} )
+		and
+	( ! defined $opts{h} )
+) {
+################################################################################
+# Main workflow parsing spamdb output
 dbg("starting up reading spamdb");
 open(SPAMDB, "spamdb |") or die "could not spawn spamdb";
-while(<SPAMDB>){ 
+while(<SPAMDB>){
 	chomp;
 	(
-		$type, 
-		$src, 
-		$helo, 
-		$from, 
-		$to, 
-		$first, 
-		$passed, 
-		$expire, 
-		$block, 
+		$type,
+		$src,
+		$helo,
+		$from,
+		$to,
+		$first,
+		$passed,
+		$expire,
+		$block,
 		$pass
 	)=split('\|');
 	if ( $type ne "GREY" ) { next; }
 
-	# we store all the Data we need. 
+	# we store all the Data we need.
 	
-	# the next tweak is a workaround that changes expire to the actual expire time 
+	# the next tweak is a workaround that changes expire to the actual expire time
 	# due to a bug in spamdb
 	$passed=$first+($opts{p}*60);
 	
 	# first we store GREY entrys to the hash as they are
-	$grey_key="GREY|$src|$helo|$from|$to";
+	$grey_key="$src|$helo|$from|$to";
 	$value="$first|$passed|$expire|$block|$pass";
 	#$hrvalue=hrtime($first)."|".hrtime($passed)."|".hrtime($expire)."|$block|$pass";
-	if ( defined $db{$grey_key} ) { 
-		if ( $db{$grey_key} ne $value ){
-			$db{$grey_key}=$value;
-			print GRL "$grey_key|$value\n";
+	if ( defined $db_grey{$grey_key} ) {
+		if ( $db_grey{$grey_key} ne $value ){
+			$db_grey{$grey_key}=$value;
+			print GRL "grey $grey_key|$value\n";
 		}
 		#dbg("grey entry already seen", $helo, $src, $from, $to);
-		next; 
+		next;
 	} # we have already seen and processed this greylist entry
-	$db{$grey_key}=$value;
-	print GRL "$grey_key|$value\n";
+	$db_grey{$grey_key}=$value;
+	print GRL "grey $grey_key|$value\n";
 
 
-	if ( test_helo($helo) == 0 ) { 
+	if ( test_helo($helo) == 0 ) {
 		dbg("helo $helo has no domain in it and is trapped therefore");
 		push(@trapped_src, $src);
-		next; 
+		next;
 	} # for not being a domain
 	dbg("spf resolving $helo");
 	my @addrs=resolve_helo($helo);
@@ -222,11 +289,11 @@ while(<SPAMDB>){
 		if ( $spf_code ne 'pass' ) {
 			dbg("The ip $src is not listed in the spf record of $from");
 			push(@trapped_src, $src);
-			next; 
+			next;
 		}
 	}
 
-	if ( compare_helo_addr($src, @addrs) == 0 ) { 
+	if ( compare_helo_addr($src, @addrs) == 0 ) {
 		# domain does not resolve and does not pass spf
 		dbg("The helo $helo could not be compared src $src == ".join(' ', @addrs));
 		if ( $spf_code ne 'pass' ) {
@@ -237,87 +304,87 @@ while(<SPAMDB>){
 			}
 			dbg("spf lookup not passed from ".substr($from, 1, -1)." ".$spf_code);
 			push(@trapped_src, $src);
-			next; 
+			next;
 		}
 		dbg("The helo $helo is illegal but the spf lookup has passed");
 		dbg("The this is most propably the case for outlook.com");
-		# we will take $src as the ip one by one. 
+		# we will take $src as the ip one by one.
 		@addrs=($src);
-	} 
+	}
 
 	# store resolved IP addresses for this greylist helo entry
-	my %iph=ip_hash($db{"RESOLVED|$helo"});
+	my %iph=ip_hash($db_resolved{"$helo"});
 	foreach my $a (@addrs) { $iph{$a}=1; }
-	$db{"RESOLVED|$helo"}=ip_string(%iph);
+	$db_resolved{"$helo"}=ip_string(%iph);
 	dbg("stored resolved ips", $helo, keys %iph);
 
 	$helo=strip_helo($helo);
 	# $helo_key="HELO|".strip_helo($helo)."|$from|$to";
-	$pass_key="PASS|$helo|$from|$to";
-	$expire_key="EXPIRE|$helo|$from|$to";
-	if ( ! defined $db{$pass_key} ) {
-		dbg($pass_key, "is not yet in db");
+	$pass_key="$helo|$from|$to";
+	$expire_key="$helo|$from|$to";
+	if ( ! defined $db_pass{$pass_key} ) {
+		dbg($pass_key, "is not yet in pass db");
 		dbg("testing for NOSPAM|$helo");
 		dbg("testing for TRAPPED|$helo");
 		# Check for nospam keys
-		# we do not register PASS or EXPIRE if the 
+		# we do not register PASS or EXPIRE if the
 		# this thing is new so lets reg
 		# $db{$helo_key}=1;
-		if ( defined $db{"NOSPAM|$helo"} ) {
+		if ( defined $db_nospam{"$helo"} ) {
 			dbg("Whitelisting", $helo);
 			# we do already know this $helo whitelist immidiately
-			$db{"NOSPAM|$helo"}=$helo;
+			$db_nospam{"$helo"}=$time;
 			push(@white_helos, $helo);
-		} elsif ( defined $db{"TRAPPED|$helo"} ) {
+		} elsif ( defined $db_trapped{"$helo"} ) {
 			dbg("Trapping", $helo);
 			# This Helo is well known and needs to be trapped immidiately
-			$db{"TRAPPED|$helo"}=$helo;
+			$db_trapped{"$helo"}=$time;
 			push(@trapped_helos, $helo);
-			delete $db{"NOSPAM|$helo"};
-		} elsif ( $helo =~ /^ncki.*\....$/ ) { # I will do some regex based configuration for sure soon 
+			delete $db_nospam{"$helo"};
+		} elsif ( $helo =~ /^ncki.*\....$/ ) { # I will do some regex based configuration for sure soon
 			dbg("Trapping regex", $helo);
 			# This Helo is well known and needs to be trapped immidiately
-			$db{"TRAPPED|$helo"}=$helo;
+			$db_trapped{"$helo"}=$time;
 			push(@trapped_helos, $helo);
-			delete $db{"NOSPAM|$helo"};
-		} elsif ( $helo =~ /^shaxi.*\....$/ ) { # I will do some regex based configuration for sure soon 
+			delete $db_nospam{"$helo"};
+		} elsif ( $helo =~ /^shaxi.*\....$/ ) { # I will do some regex based configuration for sure soon
 			dbg("Trapping regex", $helo);
 			# This Helo is well known and needs to be trapped immidiately
-			$db{"TRAPPED|$helo"}=$helo;
+			$db_trapped{"$helo"}=$time;
 			push(@trapped_helos, $helo);
-			delete $db{"NOSPAM|$helo"};
+			delete $db_nospam{"$helo"};
 		} else {
 			dbg("registering", $pass_key, "to db");
 			dbg("registering", $expire_key, "to db");
-			$db{$pass_key}=$passed;
-			$db{$expire_key}=$expire;
+			$db_pass{$pass_key}=$passed;
+			$db_expire{$expire_key}=$expire;
 		}
 	} else {
 		# $db{$helo_key}=$db{$helo_key}+1;
-		if ( $passed < $db{$pass_key} ) { $db{$pass_key}=$passed; }
-		if ( $expire < $db{$expire_key} ) { $db{$expire_key}=$expire; }
-		if ( $time > $db{$pass_key} ) { 
-			if ( defined $db{"TRAPPED|$helo"} ) {
+		if ( $passed < $db_pass{$pass_key} ) { $db_pass{$pass_key}=$passed; }
+		if ( $expire < $db_expire{$expire_key} ) { $db_expire{$expire_key}=$expire; }
+		if ( $time > $db_pass{$pass_key} ) {
+			if ( defined $db_trapped{"$helo"} ) {
 				dbg("PASSTIME Exceeded but HELO is trapped Trapping", $helo);
-				# this part should never run but to be complete here 
-				$db{"TRAPPED|$helo"}=$helo;
+				# this part should never run but to be complete here
+				$db_trapped{"$helo"}=$time;
 				push(@trapped_helos, $helo);
-				delete $db{"NOSPAM|$helo"};
-			} elsif ( $helo =~ /^ncki.*\....$/ ) { # I will do some regex based configuration for sure soon 
+				delete $db_nospam{"$helo"};
+			} elsif ( $helo =~ /^ncki.*\....$/ ) { # I will do some regex based configuration for sure soon
 				dbg("Trapping regex", $helo);
 				# This Helo is well known and needs to be trapped immidiately
-				$db{"TRAPPED|$helo"}=$helo;
+				$db_trapped{"$helo"}=$time;
 				push(@trapped_helos, $helo);
-				delete $db{"NOSPAM|$helo"};
-			} elsif ( $helo =~ /^shaxi.*\....$/ ) { # I will do some regex based configuration for sure soon 
+				delete $db_nospam{"$helo"};
+			} elsif ( $helo =~ /^shaxi.*\....$/ ) { # I will do some regex based configuration for sure soon
 				dbg("Trapping regex", $helo);
 				# This Helo is well known and needs to be trapped immidiately
-				$db{"TRAPPED|$helo"}=$helo;
+				$db_trapped{"$helo"}=$time;
 				push(@trapped_helos, $helo);
-				delete $db{"NOSPAM|$helo"};
+				delete $db_nospam{"$helo"};
 			} else {
 				dbg("PASSTIME Exceeded and new Pkg here Whitelisting", $helo);
-				$db{"NOSPAM|$helo"}=$helo;
+				$db_nospam{"$helo"}=$time;
 				push(@white_helos, $helo);
 			}
 		}
@@ -325,24 +392,29 @@ while(<SPAMDB>){
 }
 close SPAMDB;
 
+# this bracked closes the if in front of the spamdb open() call
+}
+
 ################################################################################
-# Main workflow part 2 pusching the results of main 1 back to database, stdout 
-# or spamdb  
+# Main workflow part 2 pusching the results of main 1 back to database, stdout
+# or spamdb 
 #
-# this has to be at the right spot in the code to be effective not in the end 
+# this has to be at the right spot in the code to be effective not in the end
 # as the rest of the parameter if statements are
 
-# importing of database files takes place before -N and -T options are processed and 
+# importing of database files takes place before -N and -T options are processed and
 # more important before the @trapped_helos and @white_helos is being processed
-# when the database is getting imported data is read from STDIN and the flags t n u 
-# define the scope of the content to be imported, for RESOLVED and NOSPAM or RESOLVED 
-# and TRAPPED entrys.  
+# when the database is getting imported data is read from STDIN and the flags t n u
+# define the scope of the content to be imported, for RESOLVED and NOSPAM or RESOLVED
+# and TRAPPED entrys. 
+#
+#TODO FIX import Trapped and Nospam validity check $db{
 if ( defined $opts{i} ) {
 	while(<STDIN>) {
 		chomp;
 		my ($T, $P, @l) = split(/\|/);
 		my $F=join('|', @l);
-		my $key="$T|$P";
+		my $key="$P";
 
 		my %perm;
 		if ( $opts{t} ) {
@@ -360,58 +432,64 @@ if ( defined $opts{i} ) {
 				dbg("the keytype $T ($key) read from stdin is allowed to be imported from this source! skipping.");
 				next;
 			}
-			if ( ! defined $db{$key} ) { 
-				dbg("inserting new $key");
-				$db{$key}=$F; 
+			if ( ! defined $db_resolved{$key} ) {
+				dbg("inserting new resolved $key");
+				$db_resolved{$key}=$F;
 			}
 		} elsif ( $T eq "UNRESOLVED" ) {
 			if ( ! defined $perm{UNRESOLVED} ) {
 				dbg("the keytype $T ($key) read from stdin is allowed to be imported from this source! skipping.");
 				next;
 			}
-			if ( ! defined $db{$key} ) { 
-				dbg("inserting new $key");
-				push(@trapped_src, $P);
+			if ( ( ! defined $db_unresolved{$key} ) and ( $F > $time ) ) {
+				dbg("inserting new unresolved $key");
+				$db_unresolved{"$src"}=$F;
+				dbg("spamdb -a -t $src");
+				# trap for some time
+				system("spamdb -a -t $src");
 			}
-			elsif ( $F < $time ) { 
+			elsif ( ! defined $db_unresolved{$key} ) {
 				dbg("timestamp $F on $key is smaller than current time $time. skipping!");
 				next;
 			}
-			elsif ( $db{$key} < $F ) { 
+			elsif ( $db_unresolved{$key} < $F ) {
 				dbg("saving new timestamp for $key");
-				push(@trapped_src, $P);
+				$db_unresolved{"$src"}=$F;
+				dbg("spamdb -a -t $src");
+				# trap for some time
+				system("spamdb -a -t $src");
 			}
 		} elsif ( $T eq "NOSPAM" ) {
 			if ( ! defined $perm{NOSPAM} ) {
 				dbg("the keytype $T ($key) read from stdin is allowed to be imported from this source! skipping.");
 				next;
 			}
-			if ( $P ne $F ) {  
+			if ( ( $P ne $F ) and ( $F !~ /^\d+$/ ) ) { 
 				dbg("the data of $key is invalid ($F). skipping!");
 				next;
 			}
-			if ( ! defined $db{$key} ) { 
+			if ( ! defined $db_nospam{$key} ) {
 				dbg("inserting $key to database");
-				my $trapped_key="TRAPPED|$P";
-				push(@white_helos, $F);
-				delete $db{$trapped_key};
-				$db{$key}=$F; 
+				my $trapped_key="$P";
+				push(@white_helos, $P);
+				delete $db_trapped{$trapped_key};
+				$db_nospam{$key}=$F;
 			}
 		} elsif ( $T eq "TRAPPED" ) {
 			if ( ! defined $perm{TRAPPED} ) {
 				dbg("the keytype $T ($key) read from stdin is allowed to be imported from this source! skipping.");
 				next;
 			}
-			if ( $P ne $F ) {  
+			if ( ( $P ne $F ) and ( $F !~ /^\d+$/ ) ) { 
 				dbg("the data of $key is invalid ($F). skipping!");
 				next:
 			}
-			if ( ! defined $db{$key} ) { 
+			if ( ! defined $db_trapped{$key} ) {
 				dbg("inserting $key to database");
-				my $nospam_key="NOSPAM|$P";
-				push(@trapped_helos, $F);
-				delete $db{$nospam_key};
-				$db{$key}=$F; 
+				my $nospam_key="$P";
+				push(@trapped_helos, $P);
+				delete $db_nospam{$nospam_key};
+				$db_trapped{$key}=$F;
 			}
 		}
 	}
@@ -420,45 +498,45 @@ if ( defined $opts{i} ) {
 if ( defined $opts{N} ) {
 	dbg("helo $opts{N} is put in NOSPAM status as requested by the user (-N)");
 	push(@white_helos, $opts{N});
-	delete $db{"TRAPPED|$opts{N}"};
-	$db{"NOSPAM|$opts{N}"}=$opts{N};
+	delete $db_trapped{"$opts{N}"};
+	$db_nospam{"$opts{N}"}=$time;
 }
 
 dbg("whitelist helos");
 foreach my $helo (@white_helos) {
-	my @resolved_keys=sort grep {/$helo$/} grep {/^RESOLVED/} keys %db;
+	my @resolved_keys=sort grep {/$helo$/} keys %db_resolved;
 	my @ipa;
-	foreach my $k (@resolved_keys) { 
-		dbg("# $k"); 
-		push(@ipa, ip_hash($db{$k}));
+	foreach my $k (@resolved_keys) {
+		dbg("# $k");
+		push(@ipa, ip_hash($db_resolved{$k}));
 	}
 	my %iph=@ipa;
 	foreach my $addr (keys %iph) {
-		dbg("spamdb -a $addr"); 
+		dbg("spamdb -a $addr");
 		system("spamdb -a $addr");
 	}
 }
 
-# this has to be at the right spot in the code to be effective not in the end 
+# this has to be at the right spot in the code to be effective not in the end
 # as the rest of the parameter if statements are
 if ( defined $opts{T} ) {
 	dbg("helo $opts{T} is to be trapped as the user whishes (-T)");
 	push(@trapped_helos, $opts{T});
-	delete $db{"NOSPAM|$opts{T}"};
-	$db{"TRAPPED|$opts{T}"}=$opts{T};
+	delete $db_nospam{"$opts{T}"};
+	$db_trapped{"$opts{T}"}=$time;
 }
 
 dbg("trapping helos");
 foreach my $helo (@trapped_helos) {
-	my @resolved_keys=sort grep {/$helo$/} grep {/^RESOLVED/} keys %db;
+	my @resolved_keys=sort grep {/$helo$/} keys %db_resolved;
 	my @ipa;
-	foreach my $k (@resolved_keys) { 
-		dbg("# $k"); 
-		push(@ipa, ip_hash($db{$k}));
+	foreach my $k (@resolved_keys) {
+		dbg("# $k");
+		push(@ipa, ip_hash($db_resolved{$k}));
 	}
 	my %iph=@ipa;
 	foreach my $addr (keys %iph) {
-		dbg("spamdb -a -t $addr"); 
+		dbg("spamdb -a -t $addr");
 		system("spamdb -a -t $addr");
 	}
 }
@@ -466,107 +544,146 @@ foreach my $helo (@trapped_helos) {
 dbg("trapping src");
 my $traptime=$time+(60*60*24); # trap for 24 hours
 foreach my $src (@trapped_src) {
-	dbg("spamdb -a -t $src"); 
+	dbg("spamdb -a -t $src");
 	system("spamdb -a -t $src");
 	# trap for some time
-	$db{"UNRESOLVED|$src"}=$traptime;
+	$db_unresolved{"$src"}=$traptime;
 }
 dbg("untrapping src to give them a try");
-foreach my $key (grep {/^UNRESOLVED/} keys %db) {
-	if ( $db{$key} < $time ) {
+foreach my $key (keys %db_unresolved) {
+	if ( $db_unresolved{$key} < $time ) {
 		my $addr=substr($key,11);
-		dbg("spamdb -d $addr"); 
-		system("spamdb -d $addr 2> /dev/null"); 
-		delete $db{$key};
+		dbg("spamdb -d $addr");
+		system("spamdb -d $addr 2> /dev/null");
+		delete $db_unresolved{$key};
 	}
 }
 
 dbg("expire old grey entrys ");
-foreach my $key (grep {/^GREY/} keys %db) {
+foreach my $key (keys %db_grey) {
 	my (
-		$first, 
-		$passed, 
-		$expire, 
-		$block, 
+		$first,
+		$passed,
+		$expire,
+		$block,
 		$pass
-	)=split('\|', $db{$key});
-	if ( $time > $expire ) { 
-		dbg("expire gray:", $key, $time, $expire);
-		delete $db{$key}; 
+	)=split('\|', $db_grey{$key});
+	if ( $time > $expire ) {
+		dbg("expire grey:", $key, $time, $expire);
+		delete $db_grey{$key};
 	}
 }
 dbg("expire old helo entrys ");
-foreach my $key (grep {/^EXPIRE/} keys %db) {
-	if ( $time > $db{$key} ) { 
-		dbg("expire helo:", $key, $time, $db{$key});
-		delete $db{$key}; 
-		$key =~ s/^EXPIRE/PASS/;
-		dbg("expire helo:", $key, $time, $db{$key});
-		delete $db{$key}; 
+foreach my $key (keys %db_expire) {
+	if ( $time > $db_expire{$key} ) {
+		dbg("expire helo expire:", $key, $time, $db{$key});
+		delete $db_expire{$key};
+		dbg("expire helo pass:", $key, $time, $db_pass{$key});
+		delete $db_pass{$key};
 	}
 }
 
 if ( defined $opts{D} ) {
-        dbg("deleting:", $opts{D}, $db{$opts{D}});
-        delete $db{$opts{D}};
+	my ($d, $P) = split('|', $opts{D});
+	$d=uc($d);
+        dbg("deleting:", $T, $P);
+	if ($d == "GREY") {
+		dbg("deleted:", $db_grey{$P});
+		delete $db_grey{$P} or die "cant delete $P";
+	} elsif ($d == "PASS") {
+		dbg("deleted:", $db_pass{$P});
+		delete $db_pass{$P} or die "cant delete $P";
+	} elsif ($d == "EXPIRE") {
+		dbg("deleted:", $db_expire{$P});
+		delete $db_expire{$P} or die "cant delete $P";
+	} elsif ($d == "NOSPAM") {
+		dbg("deleted:", $db_nospam{$P});
+		delete $db_nospam{$P} or die "cant delete $P";
+	} elsif ($d == "TRAPPED") {
+		dbg("deleted:", $db_trapped{$P});
+		delete $db_trapped{$P} or die "cant delete $P";
+	} elsif ($d == "RESOLVED") {
+		dbg("deleted:", $db_resolved{$P});
+		delete $db_resolved{$P} or die "cant delete $P";
+	} elsif ($d == "UNRESOLVED") {
+		dbg("deleted:", $db_unresolved{$P});
+		delete $db_unresolved{$P} or die "cant delete $P";
+	} else {
+		die "The DB key $d is of unknown type stopping here\n";
+	}
 }
 
-# do not dump out stuff if we import things 
+# do not dump out stuff if we import things
 if ( ! defined $opts{i} ) {
 	if ( defined $opts{t} ) {
-		foreach my $key (sort grep {/^TRAPPED/} keys %db) {
+		foreach my $key (sort keys %db_trapped) {
 			# this helo is or was once whitelisted
-			my $helo = $db{$key};
-			my @resolved_keys=sort grep {/$helo$/} grep {/^RESOLVED/} keys %db;
-			foreach my $k (@resolved_keys) { 
-				print "$k|$db{$k}\n";
+			my $helo = $key;
+			my @resolved_keys=sort grep {/$helo$/} keys %db_resolved;
+			foreach my $k (@resolved_keys) {
+				print "RESOLVED|$k|$db_resolved{$k}\n";
 			}
-			print "$key|$db{$key}\n";
+			print "TRAPPED|$key|$db_trapped{$key}\n";
 		}
 	}
 
 	if ( defined $opts{n} ) {
-		foreach my $key (sort grep {/^NOSPAM/} keys %db) {
+		foreach my $key (sort keys %db_nospam) {
 			# this helo is or was once whitelisted
-			my $helo = $db{$key};
-			my @resolved_keys=sort grep {/$helo$/} grep {/^RESOLVED/} keys %db;
-			foreach my $k (@resolved_keys) { 
-				print "$k|$db{$k}\n";
+			my $helo = $key;
+			my @resolved_keys=sort grep {/$helo$/} keys %db_resolved;
+			foreach my $k (@resolved_keys) {
+				print "RESOLVED|$k|$db_resolved{$k}\n";
 			}
-			print "$key|$db{$key}\n";
+			print "NOSPAM|$key|$db_nospam{$key}\n";
 		}
 	}
 
-	# print unresolved to stdout 
+	# print unresolved to stdout
 	if ( defined $opts{u} ) {
-		foreach my $key (sort grep {/^UNRESOLVED/} keys %db) {
-			print "$key|$db{$key}\n";
+		foreach my $key (sort keys %db_unresolved) {
+			print "UNRESOLVED|$key|$db_unresolved{$key}\n";
 		}
 	}
 }
 
 if ( defined $opts{d} ) {
-	foreach my $k (sort keys %db) { 
-		if ( $k =~ /^UNRESOLVED/ ) {
-			print $k.": ".hrtime($db{$k})."\n";
-		} elsif ( $k =~ /^PASS/ ) {
-			print $k.": ".hrtime($db{$k})."\n";
-		} elsif ( $k =~ /^EXPIRE/ ) {
-			print $k.": ".hrtime($db{$k})."\n";
-		} elsif ( $k =~ /^GREY/ ) {
-			my @l=split('\|', $db{$k});
-			$l[0]=hrtime($l[0]);
-			$l[1]=hrtime($l[1]);
-			$l[2]=hrtime($l[2]);
-			print $k.": ".join('|', @l)."\n";
-		} else {
-			print $k.": ".$db{$k}."\n";
-		}
+	foreach my $k (sort keys %db_grey) {
+		my @l=split('\|', $db_grey{$k});
+		$l[0]=hrtime($l[0]);
+		$l[1]=hrtime($l[1]);
+		$l[2]=hrtime($l[2]);
+		print "GREY|".$k.": ".join('|', @l)."\n";
 	}
-} 
+	foreach my $k (sort keys %db_pass) {
+		print "PASS|".$k.": ".hrtime($db_pass{$k})."\n";
+	}
+	foreach my $k (sort keys %db_expire) {
+		print "EXPIRE|".$k.": ".hrtime($db_expire{$k})."\n";
+	}
+	foreach my $k (sort keys %db_nospam) {
+		print "NOSPAM|".$k.": ".$db_nospam{$k}."\n";
+	}
+	foreach my $k (sort keys %db_trapped) {
+		print "TRAPPED|".$k.": ".$db_trapped{$k}."\n";
+	}
+	foreach my $k (sort keys %db_resolved) {
+		print "RESOLVED|".$k.": ".$db_resolved{$k}."\n";
+	}
+	foreach my $k (sort keys %db_unresolved) {
+		print "UNRESOLVED|".$k.": ".hrtime($db_unresolved{$k})."\n";
+	}
+}
 
 ################################################################################
-# close open files before exit 
+# close open files before exit
 untie %db;
+untie %db_grey;
+untie %db_pass;
+untie %db_expire;
+untie %db_nospam;
+untie %db_trapped;
+untie %db_resolved;
+untie %db_unresolved;
 close GRL;
 exit(0);
