@@ -56,9 +56,12 @@ if ( $opts{p} !~ /^\d+$/ ) {
 	$opts{p}=30;
 }
 
-# tie(%db, 'SDBM_File', '/var/db/whitescan', O_RDWR|O_CREAT, 0600)
-#   or die "Couldn't tie SDBM file '/var/db/whitescan': $!; aborting";
-# %db;
+if ( -e "/var/db/whitescan.dir" ) {
+	tie(%db, 'SDBM_File', '/var/db/whitescan', O_RDWR|O_CREAT, 0600)
+	  or die "Couldn't tie SDBM file '/var/db/whitescan': $!; aborting";
+} else {
+	my %db;
+}
 
 tie(%db_pass, 'NDBM_File', '/var/db/whitescan_pass', O_RDWR|O_CREAT, 0600)
   or die "Couldn't tie NDBM file '/var/db/whitescan_pass': $!; aborting";
@@ -213,6 +216,12 @@ foreach my $key (keys %db) {
 	delete $db{$key};
 }
 
+if ( -e "/var/db/whitescan.dir" ) {
+	dbg("deleting old sdbm database");
+	untie %db;
+	unlink("/var/db/whitescan.dir");
+	unlink("/var/db/whitescan.pag");
+}
 # Spamdb will not be called for db import or if other administrative tasks
 # will be made
 if (
