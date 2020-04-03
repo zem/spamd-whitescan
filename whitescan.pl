@@ -33,6 +33,7 @@
 # Setup part to make load librarys and initialize vars and parse argv
 use Fcntl;   # For O_RDWR, O_CREAT, etc.
 use SDBM_File;
+use NDBM_File;
 use Socket;
 use Net::hostent;
 use Getopt::Std;
@@ -58,25 +59,25 @@ if ( $opts{p} !~ /^\d+$/ ) {
 tie(%db, 'SDBM_File', '/var/db/whitescan', O_RDWR|O_CREAT, 0600)
   or die "Couldn't tie SDBM file '/var/db/whitescan': $!; aborting";
 
-tie(%db_pass, 'SDBM_File', '/var/db/whitescan_pass', O_RDWR|O_CREAT, 0600)
+tie(%db_pass, 'NDBM_File', '/var/db/whitescan_pass', O_RDWR|O_CREAT, 0600)
   or die "Couldn't tie SDBM file '/var/db/whitescan_pass': $!; aborting";
 
-tie(%db_grey, 'SDBM_File', '/var/db/whitescan_grey', O_RDWR|O_CREAT, 0600)
+tie(%db_grey, 'NDBM_File', '/var/db/whitescan_grey', O_RDWR|O_CREAT, 0600)
   or die "Couldn't tie SDBM file '/var/db/whitescan_grey': $!; aborting";
 
-tie(%db_trapped, 'SDBM_File', '/var/db/whitescan_trapped', O_RDWR|O_CREAT, 0600)
+tie(%db_trapped, 'NDBM_File', '/var/db/whitescan_trapped', O_RDWR|O_CREAT, 0600)
   or die "Couldn't tie SDBM file '/var/db/whitescan_trapped': $!; aborting";
 
-tie(%db_resolved, 'SDBM_File', '/var/db/whitescan_resolved', O_RDWR|O_CREAT, 0600)
+tie(%db_resolved, 'NDBM_File', '/var/db/whitescan_resolved', O_RDWR|O_CREAT, 0600)
   or die "Couldn't tie SDBM file '/var/db/whitescan_resolved': $!; aborting";
 
-tie(%db_nospam, 'SDBM_File', '/var/db/whitescan_nospam', O_RDWR|O_CREAT, 0600)
+tie(%db_nospam, 'NDBM_File', '/var/db/whitescan_nospam', O_RDWR|O_CREAT, 0600)
   or die "Couldn't tie SDBM file '/var/db/whitescan_nospam': $!; aborting";
 
-tie(%db_unresolved, 'SDBM_File', '/var/db/whitescan_unresolved', O_RDWR|O_CREAT, 0600)
+tie(%db_unresolved, 'NDBM_File', '/var/db/whitescan_unresolved', O_RDWR|O_CREAT, 0600)
   or die "Couldn't tie SDBM file '/var/db/whitescan_unresolved': $!; aborting";
 
-tie(%db_expire, 'SDBM_File', '/var/db/whitescan_expire', O_RDWR|O_CREAT, 0600)
+tie(%db_expire, 'NDBM_File', '/var/db/whitescan_expire', O_RDWR|O_CREAT, 0600)
   or die "Couldn't tie SDBM file '/var/db/whitescan_expire': $!; aborting";
 
 dbg("opening greylog");
@@ -198,7 +199,9 @@ foreach my $key (keys %db) {
 	} else {
 		die "The DB key $key is of unknown type stopping here\n";
 	}
-	delete $db{$key} or die "cant delete key $key from old db";
+	# as SDBM files might cause trouble we need a bit more code to delete values 
+	dbg("deleting $key: $db{$key} from old db");
+	delete $db{$key};
 }
 
 # Spamdb will not be called for db import or if other administrative tasks
@@ -588,25 +591,25 @@ if ( defined $opts{D} ) {
         dbg("deleting:", $T, $P);
 	if ($d == "GREY") {
 		dbg("deleted:", $db_grey{$P});
-		delete $db_grey{$P} or die "cant delete $P";
+		delete $db_grey{$P};
 	} elsif ($d == "PASS") {
 		dbg("deleted:", $db_pass{$P});
-		delete $db_pass{$P} or die "cant delete $P";
+		delete $db_pass{$P};
 	} elsif ($d == "EXPIRE") {
 		dbg("deleted:", $db_expire{$P});
-		delete $db_expire{$P} or die "cant delete $P";
+		delete $db_expire{$P};
 	} elsif ($d == "NOSPAM") {
 		dbg("deleted:", $db_nospam{$P});
-		delete $db_nospam{$P} or die "cant delete $P";
+		delete $db_nospam{$P};
 	} elsif ($d == "TRAPPED") {
 		dbg("deleted:", $db_trapped{$P});
-		delete $db_trapped{$P} or die "cant delete $P";
+		delete $db_trapped{$P};
 	} elsif ($d == "RESOLVED") {
 		dbg("deleted:", $db_resolved{$P});
-		delete $db_resolved{$P} or die "cant delete $P";
+		delete $db_resolved{$P};
 	} elsif ($d == "UNRESOLVED") {
 		dbg("deleted:", $db_unresolved{$P});
-		delete $db_unresolved{$P} or die "cant delete $P";
+		delete $db_unresolved{$P};
 	} else {
 		die "The DB key $d is of unknown type stopping here\n";
 	}
