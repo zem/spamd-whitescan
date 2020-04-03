@@ -187,6 +187,8 @@ sub hrtime {
 foreach my $key (keys %db) {
 	my ($d, @k)=split('\|', $key);
 	dbg("type is $d");
+	if (join('|', @k) eq "") { print STDERR "$key is invalid, skipping\n"; next; }
+	if ($db{$key} eq "") { print STDERR "$key has invalid value, skipping\n"; next; }
 	if ($d eq "GREY") {
 		dbg("copying $key: $db{$key} from old db to grey ".join("|",@k));
 		$db_grey{join('|', @k)}=$db{$key} or die "cant write key $key to new db";
