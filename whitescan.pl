@@ -56,29 +56,30 @@ if ( $opts{p} !~ /^\d+$/ ) {
 	$opts{p}=30;
 }
 
-tie(%db, 'SDBM_File', '/var/db/whitescan', O_RDWR|O_CREAT, 0600)
-  or die "Couldn't tie SDBM file '/var/db/whitescan': $!; aborting";
+# tie(%db, 'SDBM_File', '/var/db/whitescan', O_RDWR|O_CREAT, 0600)
+#   or die "Couldn't tie SDBM file '/var/db/whitescan': $!; aborting";
+# %db;
 
 tie(%db_pass, 'NDBM_File', '/var/db/whitescan_pass', O_RDWR|O_CREAT, 0600)
-  or die "Couldn't tie SDBM file '/var/db/whitescan_pass': $!; aborting";
+  or die "Couldn't tie NDBM file '/var/db/whitescan_pass': $!; aborting";
 
 tie(%db_grey, 'NDBM_File', '/var/db/whitescan_grey', O_RDWR|O_CREAT, 0600)
-  or die "Couldn't tie SDBM file '/var/db/whitescan_grey': $!; aborting";
+  or die "Couldn't tie NDBM file '/var/db/whitescan_grey': $!; aborting";
 
 tie(%db_trapped, 'NDBM_File', '/var/db/whitescan_trapped', O_RDWR|O_CREAT, 0600)
-  or die "Couldn't tie SDBM file '/var/db/whitescan_trapped': $!; aborting";
+  or die "Couldn't tie NDBM file '/var/db/whitescan_trapped': $!; aborting";
 
 tie(%db_resolved, 'NDBM_File', '/var/db/whitescan_resolved', O_RDWR|O_CREAT, 0600)
-  or die "Couldn't tie SDBM file '/var/db/whitescan_resolved': $!; aborting";
+  or die "Couldn't tie NDBM file '/var/db/whitescan_resolved': $!; aborting";
 
 tie(%db_nospam, 'NDBM_File', '/var/db/whitescan_nospam', O_RDWR|O_CREAT, 0600)
-  or die "Couldn't tie SDBM file '/var/db/whitescan_nospam': $!; aborting";
+  or die "Couldn't tie NDBM file '/var/db/whitescan_nospam': $!; aborting";
 
 tie(%db_unresolved, 'NDBM_File', '/var/db/whitescan_unresolved', O_RDWR|O_CREAT, 0600)
-  or die "Couldn't tie SDBM file '/var/db/whitescan_unresolved': $!; aborting";
+  or die "Couldn't tie NDBM file '/var/db/whitescan_unresolved': $!; aborting";
 
 tie(%db_expire, 'NDBM_File', '/var/db/whitescan_expire', O_RDWR|O_CREAT, 0600)
-  or die "Couldn't tie SDBM file '/var/db/whitescan_expire': $!; aborting";
+  or die "Couldn't tie NDBM file '/var/db/whitescan_expire': $!; aborting";
 
 dbg("opening greylog");
 open(GRL, ">> /var/log/grey.log") or die "could not open grey.log";
@@ -181,20 +182,28 @@ sub hrtime {
 # multiple Databases we have to convert the old DB format into a new one.
 ################################################################################
 foreach my $key (keys %db) {
-	my ($d, @k)=split('|', $key);
-	if ($d == "GREY") {
+	my ($d, @k)=split('\|', $key);
+	dbg("type is $d");
+	if ($d eq "GREY") {
+		dbg("copying $key: $db{$key} from old db to grey ".join("|",@k));
 		$db_grey{join('|', @k)}=$db{$key} or die "cant write key $key to new db";
-	} elsif ($d == "PASS") {
+	} elsif ($d eq "PASS") {
+		dbg("copying $key: $db{$key} from old db to pass ".join("|",@k));
 		$db_pass{join('|', @k)}=$db{$key} or die "cant write key $key to new db";
-	} elsif ($d == "EXPIRE") {
+	} elsif ($d eq "EXPIRE") {
+		dbg("copying $key: $db{$key} from old db to expire ".join("|",@k));
 		$db_expire{join('|', @k)}=$db{$key} or die "cant write key $key to new db";
-	} elsif ($d == "NOSPAM") {
+	} elsif ($d eq "NOSPAM") {
+		dbg("copying $key: $db{$key} from old db to nospam ".join("|",@k));
 		$db_nospam{join('|', @k)}=$db{$key} or die "cant write key $key to new db";
-	} elsif ($d == "TRAPPED") {
+	} elsif ($d eq "TRAPPED") {
+		dbg("copying $key: $db{$key} from old db to trapped ".join("|",@k));
 		$db_trapped{join('|', @k)}=$db{$key} or die "cant write key $key to new db";
-	} elsif ($d == "RESOLVED") {
+	} elsif ($d eq "RESOLVED") {
+		dbg("copying $key: $db{$key} from old db to resolved ".join("|",@k));
 		$db_resolved{join('|', @k)}=$db{$key} or die "cant write key $key to new db";
-	} elsif ($d == "UNRESOLVED") {
+	} elsif ($d eq "UNRESOLVED") {
+		dbg("copying $key: $db{$key} from old db to unresolved ".join("|",@k));
 		$db_unresolved{join('|', @k)}=$db{$key} or die "cant write key $key to new db";
 	} else {
 		die "The DB key $key is of unknown type stopping here\n";
@@ -589,25 +598,25 @@ if ( defined $opts{D} ) {
 	my ($d, $P) = split('|', $opts{D});
 	$d=uc($d);
         dbg("deleting:", $T, $P);
-	if ($d == "GREY") {
+	if ($d eq "GREY") {
 		dbg("deleted:", $db_grey{$P});
 		delete $db_grey{$P};
-	} elsif ($d == "PASS") {
+	} elsif ($d eq "PASS") {
 		dbg("deleted:", $db_pass{$P});
 		delete $db_pass{$P};
-	} elsif ($d == "EXPIRE") {
+	} elsif ($d eq "EXPIRE") {
 		dbg("deleted:", $db_expire{$P});
 		delete $db_expire{$P};
-	} elsif ($d == "NOSPAM") {
+	} elsif ($d eq "NOSPAM") {
 		dbg("deleted:", $db_nospam{$P});
 		delete $db_nospam{$P};
-	} elsif ($d == "TRAPPED") {
+	} elsif ($d eq "TRAPPED") {
 		dbg("deleted:", $db_trapped{$P});
 		delete $db_trapped{$P};
-	} elsif ($d == "RESOLVED") {
+	} elsif ($d eq "RESOLVED") {
 		dbg("deleted:", $db_resolved{$P});
 		delete $db_resolved{$P};
-	} elsif ($d == "UNRESOLVED") {
+	} elsif ($d eq "UNRESOLVED") {
 		dbg("deleted:", $db_unresolved{$P});
 		delete $db_unresolved{$P};
 	} else {
