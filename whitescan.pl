@@ -297,7 +297,7 @@ while(<SPAMDB>){
 		# domain does not resolve and does not pass spf
 		dbg("The helo $helo could not be compared src $src == ".join(' ', @addrs));
 		if ( $spf_code ne 'pass' ) {
-			if (( $spf_identity eq "" ) and ( defined $db{"RESOLVED|$helo"} )) {
+			if (( $spf_identity eq "" ) and ( defined $db_resolved{"$helo"} )) {
 				dbg("No rcpt-from and unresolveable but known domain $helo");
 				dbg("I cant do anything here but skipping to next");
 				next;
@@ -408,7 +408,6 @@ close SPAMDB;
 # define the scope of the content to be imported, for RESOLVED and NOSPAM or RESOLVED
 # and TRAPPED entrys. 
 #
-#TODO FIX import Trapped and Nospam validity check $db{
 if ( defined $opts{i} ) {
 	while(<STDIN>) {
 		chomp;
@@ -576,7 +575,7 @@ foreach my $key (keys %db_grey) {
 dbg("expire old helo entrys ");
 foreach my $key (keys %db_expire) {
 	if ( $time > $db_expire{$key} ) {
-		dbg("expire helo expire:", $key, $time, $db{$key});
+		dbg("expire helo expire:", $key, $time, $db_expire{$key});
 		delete $db_expire{$key};
 		dbg("expire helo pass:", $key, $time, $db_pass{$key});
 		delete $db_pass{$key};
