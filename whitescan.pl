@@ -438,6 +438,8 @@ if ( defined $opts{i} ) {
 		my $F=join('|', @l);
 		my $key="$P";
 
+		if ( $key eq "" ) { print STDERR "Read zero length key of type $T, will not import that\n"; next; }
+
 		my %perm;
 		if ( $opts{t} ) {
 			$perm{RESOLVED}=1;
@@ -465,10 +467,10 @@ if ( defined $opts{i} ) {
 			}
 			if ( ( ! defined $db_unresolved{$key} ) and ( $F > $time ) ) {
 				dbg("inserting new unresolved $key");
-				$db_unresolved{"$src"}=$F;
-				dbg("spamdb -a -t $src");
+				$db_unresolved{"$key"}=$F;
+				dbg("spamdb -a -t $key");
 				# trap for some time
-				system("spamdb -a -t $src");
+				system("spamdb -a -t $key");
 			}
 			elsif ( ! defined $db_unresolved{$key} ) {
 				dbg("timestamp $F on $key is smaller than current time $time. skipping!");
@@ -476,10 +478,10 @@ if ( defined $opts{i} ) {
 			}
 			elsif ( $db_unresolved{$key} < $F ) {
 				dbg("saving new timestamp for $key");
-				$db_unresolved{"$src"}=$F;
-				dbg("spamdb -a -t $src");
+				$db_unresolved{"$key"}=$F;
+				dbg("spamdb -a -t $key");
 				# trap for some time
-				system("spamdb -a -t $src");
+				system("spamdb -a -t $key");
 			}
 		} elsif ( $T eq "NOSPAM" ) {
 			if ( ! defined $perm{NOSPAM} ) {
