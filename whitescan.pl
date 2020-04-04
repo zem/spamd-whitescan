@@ -434,7 +434,7 @@ close SPAMDB;
 if ( defined $opts{i} ) {
 	while(<STDIN>) {
 		chomp;
-		my ($T, $P, @l) = split(/\|/);
+		my ($T, $P, @l) = split('\|');
 		my $F=join('|', @l);
 		my $key="$P";
 
@@ -608,7 +608,7 @@ foreach my $key (keys %db_expire) {
 }
 
 if ( defined $opts{D} ) {
-	my ($d, $P) = split('|', $opts{D});
+	my ($d, $P) = split('\|', $opts{D});
 	$d=uc($d);
         dbg("deleting:", $T, $P);
 	if ($d eq "GREY") {
