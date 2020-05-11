@@ -376,6 +376,12 @@ while(<SPAMDB>){
 			$db_trapped{"$helo"}=$time;
 			push(@trapped_helos, $helo);
 			delete $db_nospam{"$helo"};
+		} elsif ( $helo =~ /securedns\.com$/ ) { # I will do some regex based configuration for sure soon
+			dbg("Trapping regex", $helo);
+			# This Helo is well known and needs to be trapped immidiately
+			$db_trapped{"$helo"}=$time;
+			push(@trapped_helos, $helo);
+			delete $db_nospam{"$helo"};
 		} else {
 			dbg("registering", $pass_key, "to db");
 			dbg("registering", $expire_key, "to db");
@@ -400,6 +406,12 @@ while(<SPAMDB>){
 				push(@trapped_helos, $helo);
 				delete $db_nospam{"$helo"};
 			} elsif ( $helo =~ /^shaxi.*\....$/ ) { # I will do some regex based configuration for sure soon
+				dbg("Trapping regex", $helo);
+				# This Helo is well known and needs to be trapped immidiately
+				$db_trapped{"$helo"}=$time;
+				push(@trapped_helos, $helo);
+				delete $db_nospam{"$helo"};
+			} elsif ( $helo =~ /securedns\.com$/ ) { # I will do some regex based configuration for sure soon
 				dbg("Trapping regex", $helo);
 				# This Helo is well known and needs to be trapped immidiately
 				$db_trapped{"$helo"}=$time;
